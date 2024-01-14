@@ -11,6 +11,6 @@ async def disconnect_command(ctx):
         # Set any other state variables to initial values if needed
         # For example, you might want to reset a queue or clear any active states
 
-        await ctx.send("Bot disconnected and reset to initial state.")
+        await ctx.send("I am disconnected.")
     else:
-        await ctx.send("Bot is not currently in a voice channel.")
+        await ctx.send("I am not in a voice channel.")

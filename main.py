@@ -13,6 +13,7 @@ intents = discord.Intents.all()
 
 # Create a bot instance with intents
 bot = commands.Bot(command_prefix='#', intents=intents)
+bot.voice_contexts = {}
 
 # Event listener for when the bot is ready
 @bot.event
@@ -22,17 +23,20 @@ async def on_ready():
 # Command handling JOIN
 @bot.command(name='join')
 async def joinCommand(ctx):
+    bot.voice_contexts[ctx.guild.id] = ctx
     await join.join_command(ctx)
 
 # Command handling PLAY
 @bot.command(name='play')
 async def playCommand(ctx,*args):
+    bot.voice_contexts[ctx.guild.id] = ctx
     url = ' '.join(args)
     await play.play_command(ctx,url)
 
 @bot.command(name='disconnect')
 async def disconnectCommand(ctx):
     await disconnect.disconnect_command(ctx)
+    bot.voice_contexts.pop(ctx.guild.id, None)
 
 @bot.command(name='pause')
 async def pauseCommand(ctx):
@@ -46,14 +50,17 @@ async def resumeCommand(ctx):
 async def skipCommand(ctx):
     await skip.skip_command(ctx)
 
-# @bot.event
-# async def on_voice_state_update(member, before, after,ctx):
-#     if member == bot.user:  # Check if the bot's voice state has changed
-#         if before.channel and not after.channel:  # Bot has been disconnected
-#             print("Bot disconnected from voice channel by force, attempting to reconnect...")
-            
-#             # Add your logic here to disconnect the bot
-#             await disconnect.disconnect_command(ctx)
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if member == bot.user and before.channel is not None and after.channel is None:
+        print("You disconnected me from voice channel by force, u can use again after 1min.")
+        print(bot.voice_contexts)
+        # guild_id = before.channel.id
+        # if guild_id in bot.voice_contexts:
+        #     ctx = bot.voice_contexts[guild_id]
+        #     ctx.send("You disconnected me from voice channel by force, u can use again after 1min.")
+        #     await disconnect.disconnect_command(ctx)
+        #     bot.voice_contexts.pop(guild_id, None)  # Remove the stored context
 
 
 # Run the bot with the token

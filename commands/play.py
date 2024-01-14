@@ -6,7 +6,11 @@ from search import youtubeplaylist
 
 async def play_command(ctx, url):
     # Call join_command to join the voice channel
-    await join.join_command(ctx)
+    joined = await join.join_command(ctx)
+
+    # Check if the bot successfully joined the voice channel
+    if not joined:
+        return
 
     # Your logic for playing music can go here
     # Example: You can use a music library or API to fetch and play the requested song
