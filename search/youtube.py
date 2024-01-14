@@ -2,10 +2,11 @@
 from pytube import YouTube
 from youtube_search import YoutubeSearch  # Install this library with: pip install youtube-search
 
-async def search_youtube(query):
+async def search_youtube(query,ctx):
     try:
         if 'https://www.youtube.com/watch?v=' in query:
             return query
+        
         # Use YoutubeSearch to search for videos based on the query
         results = YoutubeSearch(query, max_results=1).to_dict()
 
