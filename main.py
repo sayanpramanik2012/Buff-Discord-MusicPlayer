@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 import youtube_dl
-from commands import join, play, disconnect, stop, skip
+from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
 import os
 
@@ -34,9 +34,13 @@ async def playCommand(ctx,*args):
 async def disconnectCommand(ctx):
     await disconnect.disconnect_command(ctx)
 
-@bot.command(name='stop')
-async def stopCommand(ctx):
-    await stop.stop_command(ctx)
+@bot.command(name='pause')
+async def pauseCommand(ctx):
+    await pause.pause_command(ctx)
+
+@bot.command(name='resume')
+async def resumeCommand(ctx):
+    await resume.resume_command(ctx)
 
 @bot.command(name='skip')
 async def skipCommand(ctx):

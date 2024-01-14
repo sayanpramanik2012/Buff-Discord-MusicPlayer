@@ -22,7 +22,7 @@ async def play_audio(ctx, audio_url):
     # Check if the bot is not already playing something
     if not voice_channel_client.is_playing()and ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
         audio_url = song_queues[ctx.guild.id].popleft()
-        await ctx.send(f"Now playing: {audio_url}")
+        await ctx.send(f"I am playing: {audio_url}")
         try:
             try:
                 # Extract audio stream URL using youtube_dl
@@ -74,7 +74,6 @@ async def on_song_end(ctx, audio_url):
             # If the queue is empty, disconnect from the voice channel
             if voice_channel_client and voice_channel_client.is_connected():
                 await voice_channel_client.disconnect()
-                print("------------------song over------------------")
 
 
 async def enqueue_song(ctx, audio_url):
@@ -84,9 +83,11 @@ async def enqueue_song(ctx, audio_url):
 
     # Enqueue the song and notify the user
     song_queues[ctx.guild.id].append((audio_url))
-    if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing():
-        await ctx.send(f"Added to queue: {audio_url}")
+    if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing() or discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
+        await ctx.send(f"I am Adding to queue: {audio_url}")
+    if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
+        await ctx.send(f"Currently I am paused use `resume` to resume")
 
     # If the bot is not already playing, start playing the next song in the queue
-    if len(song_queues)==1 and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing():
+    if len(song_queues)==1 and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing() and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
         await play_audio(ctx, audio_url)
