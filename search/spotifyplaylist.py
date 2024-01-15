@@ -2,12 +2,13 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from . import youtube
 from player import player
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 
-SPOTIFY_CLIENT_ID = '69957d4026444e2fac0be2d5b9e0bdd3'
-SPOTIFY_CLIENT_SECRET = 'fcc0b5504fa34352bb3f93e95f3e43d3'
+CLIENT_ID = SPOTIFY_CLIENT_ID
+CLIENT_SECRET = SPOTIFY_CLIENT_SECRET
 
 async def get_spotify_playlist_tracks(playlist_url,ctx):
-    sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
+    sp = spotipy.Spotify(client_credentials_manager=SpotifyClientCredentials(client_id=CLIENT_ID, client_secret=CLIENT_SECRET))
 
     # Extract playlist ID from the URL
     playlist_id = playlist_url.split('/')[-1].split('?')[0]
