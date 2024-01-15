@@ -60,15 +60,17 @@ async def on_song_end(ctx, audio_url):
 
     if not ctx.message.content.startswith("#skip"):
         if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-            await play_audio(ctx, audio_url)
+            if not ctx.message.content.startswith("#disconnect"):
+                await play_audio(ctx, audio_url)
         else:
             await ctx.send("No more song in Queue, Bye")
             # If the queue is empty, disconnect from the voice channel
             if voice_channel_client and voice_channel_client.is_connected():
+                await disconnect_and_clear_queue(ctx)
                 await voice_channel_client.disconnect()
 
 
-async def enqueue_song(ctx, audio_url):
+async def enqueue_song(ctx, audio_url,from_playlist):
     
     # Ensure there is a queue for the server
     if ctx.guild.id not in song_queues:
@@ -76,12 +78,20 @@ async def enqueue_song(ctx, audio_url):
 
     # Enqueue the song and notify the user
     song_queues[ctx.guild.id].append((audio_url))
-    if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing() or discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
-        await ctx.send(f"I am Adding to queue: {audio_url}")
-    if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
-        await ctx.send(f"Currently I am paused use `resume` to resume")
-
-    print (song_queues)
+    if not from_playlist:
+        if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing() or discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
+            await ctx.send(f"I am Adding to queue: {audio_url}")
+        if discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
+            await ctx.send(f"Currently I am paused use `resume` to resume")
     # If the bot is not already playing, start playing the next song in the queue
     if len(song_queues[ctx.guild.id]) == 1 and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing() and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
         await play_audio(ctx, audio_url)
+
+async def disconnect_and_clear_queue(ctx):
+    # Disconnect from the voice channel and clear the queue for the guild
+    voice_channel_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    if voice_channel_client and voice_channel_client.is_connected():
+        await voice_channel_client.disconnect()
+    if ctx.guild.id in song_queues:
+        del song_queues[ctx.guild.id]
+    print(f"Disconnected and cleared queue for Guild ID: {ctx.guild.id}")

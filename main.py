@@ -54,7 +54,7 @@ async def skipCommand(ctx):
 async def on_voice_state_update(member, before, after):
     if member == bot.user and before.channel is not None and after.channel is None:
         print("You disconnected me from voice channel by force, u can use again after 1min.")
-        print(bot.voice_contexts)
+        # print(bot.voice_contexts)
         # guild_id = before.channel.id
         # if guild_id in bot.voice_contexts:
         #     ctx = bot.voice_contexts[guild_id]
