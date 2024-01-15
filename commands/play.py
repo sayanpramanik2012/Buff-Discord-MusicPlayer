@@ -18,11 +18,9 @@ async def play_command(ctx, url):
         # return await spotifyplaylist.get_spotify_playlist_tracks(url,ctx)
 
     # Your logic for playing music can go here
-    # Example: You can use a music library or API to fetch and play the requested song
-    if not 'youtube.com/playlist?list=' in url or not 'spotify.com/playlist/' in url:
+    if not 'youtube.com/playlist?list=' in url and not 'spotify.com/playlist/' in url:
         from_playlist=False
         audio_url = await youtube.search_youtube(url,ctx)
-        print (audio_url)
     else:
         if 'youtube.com/playlist?list=' in url:
             return await youtubeplaylist.handle_youtube_playlist(url, ctx)
