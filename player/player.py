@@ -5,6 +5,7 @@ from pytube import YouTube
 song_queues = {}
 import asyncio
 import youtube_dl
+from random import shuffle
 
 async def play_audio(ctx, audio_url):
     # Each guild should have its own voice client
@@ -95,3 +96,13 @@ async def disconnect_and_clear_queue(ctx):
     if ctx.guild.id in song_queues:
         del song_queues[ctx.guild.id]
     print(f"Disconnected and cleared queue for Guild ID: {ctx.guild.id}")
+
+async def shuffle_queue(ctx):
+    # Shuffle the songs in the queue for the guild
+    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
+        queue = list(song_queues[ctx.guild.id])
+        shuffle(queue)
+        song_queues[ctx.guild.id] = deque(queue)
+        await ctx.send("Queue shuffled successfully!")
+    else:
+        await ctx.send("No songs in the queue to shuffle.")

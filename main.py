@@ -3,6 +3,7 @@ from discord.ext import commands
 import youtube_dl
 from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
+from player import player
 import os
 
 # Load bot token from config file
@@ -21,34 +22,44 @@ async def on_ready():
     print(f'{bot.user.name} has connected to Discord!')
 
 # Command handling JOIN
-@bot.command(name='join')
+@bot.command(name='join',help='Joins the voice channel')
 async def joinCommand(ctx):
     bot.voice_contexts[ctx.guild.id] = ctx
     await join.join_command(ctx)
 
 # Command handling PLAY
-@bot.command(name='play')
+@bot.command(name='play',help='Used to play songs')
 async def playCommand(ctx,*args):
+
     bot.voice_contexts[ctx.guild.id] = ctx
     url = ' '.join(args)
     await play.play_command(ctx,url)
 
-@bot.command(name='disconnect')
+@bot.command(name='disconnect', help='Disconnects the bot from the voice channel')
 async def disconnectCommand(ctx):
     await disconnect.disconnect_command(ctx)
     bot.voice_contexts.pop(ctx.guild.id, None)
 
-@bot.command(name='pause')
+@bot.command(name='stop',help='Disconnects the bot from the voice channel')
+async def disconnectCommand(ctx):
+    await disconnect.disconnect_command(ctx)
+    bot.voice_contexts.pop(ctx.guild.id, None)
+
+@bot.command(name='pause',help='Pause the bot while playing')
 async def pauseCommand(ctx):
     await pause.pause_command(ctx)
 
-@bot.command(name='resume')
+@bot.command(name='resume',help='Resume the bot while paused')
 async def resumeCommand(ctx):
     await resume.resume_command(ctx)
 
-@bot.command(name='skip')
+@bot.command(name='skip',help='Skip to next song')
 async def skipCommand(ctx):
     await skip.skip_command(ctx)
+
+@bot.command(name='shuffle',help='Shuffles your queue')
+async def shuffle_command(ctx):
+    await player.shuffle_queue(ctx)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
