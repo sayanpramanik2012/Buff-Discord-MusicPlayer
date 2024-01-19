@@ -14,8 +14,8 @@ async def play_command(ctx, url):
         return
 
     if 'spotify.com/playlist/' in url:
-        return await ctx.reply("I am being updated to handle spotify and its playlist")
-        # return await spotifyplaylist.get_spotify_playlist_tracks(url,ctx)
+        # return await ctx.reply("I am being updated to handle spotify and its playlist")
+        return await spotifyplaylist.get_spotify_playlist_tracks(url,ctx)
 
     # Your logic for playing music can go here
     if not 'youtube.com/playlist?list=' in url and not 'spotify.com/playlist/' in url:
