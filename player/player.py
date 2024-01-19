@@ -62,7 +62,12 @@ async def on_song_end(ctx, audio_url):
     if not ctx.message.content.startswith("#skip"):
         if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
             if not ctx.message.content.startswith("#disconnect"):
-                await play_audio(ctx, audio_url)
+                if len(voice_channel_client.channel.members) > 1:
+                    await play_audio(ctx, audio_url)
+                else:
+                    await ctx.send(f"I am not going to play next song, No one is there with me.")
+                    await disconnect_and_clear_queue(ctx)
+                    await voice_channel_client.disconnect()
         else:
             await ctx.send("No more song in Queue, Bye")
             # If the queue is empty, disconnect from the voice channel

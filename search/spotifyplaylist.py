@@ -21,6 +21,7 @@ async def get_spotify_playlist_tracks(playlist_url, ctx):
 
         # Extract track names and artists
         track_info = [(track['track']['name'], track['track']['artists'][0]['name']) for track in tracks]
+        await ctx.send(f"I am adding Songs to queue please wait until next update")
 
         for name, artist in track_info:
             # Construct a query to search for the song on YouTube
@@ -35,7 +36,7 @@ async def get_spotify_playlist_tracks(playlist_url, ctx):
             # Add a short delay to avoid blocking the event loop
             await asyncio.sleep(1)
 
-        await ctx.send(f"All videos from the playlist have been added to the queue.")
+        await ctx.send(f"I have added all songs to queue.")
 
     except Exception as e:
         print(f"An error occurred: {e}")
