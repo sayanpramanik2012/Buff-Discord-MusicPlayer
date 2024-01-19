@@ -64,7 +64,27 @@ async def shuffle_command(ctx):
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member == bot.user and before.channel is not None and after.channel is None:
-        print("You disconnected me from voice channel by force, u can use again after 1min.")
+        guild = before.channel.guild
+        guild_id = guild.id
+
+        # Handle the bot being forcibly disconnected
+        if guild_id in player.song_queues:
+            print(f"Bot forcibly disconnected from {before.channel.name} in {guild.name}")
+            voice_channel_client = discord.utils.get(bot.voice_clients, guild=guild.name)
+            # await player.disconnect_and_clear_queue(ctx)
+
+            # Clear the queue for the guild
+            del player.song_queues[guild_id]
+
+            # Optional: Notify users about the disconnection and queue clearance
+            text_channels = guild.text_channels
+            if text_channels:
+                notification_channel = discord.utils.get(text_channels, name=before.channel.name)
+                if notification_channel:
+                    await notification_channel.send("The bot has been forcibly disconnected, and the queue has been cleared.")
+                else:
+                    print(f"Notification channel 'your_notification_channel_name' not found in {guild.name}")
+
         # print(bot.voice_contexts)
         # guild_id = before.channel.id
         # if guild_id in bot.voice_contexts:
@@ -75,5 +95,8 @@ async def on_voice_state_update(member, before, after):
 
 
 # Run the bot with the token
-bot.run(TOKEN)
+try:
+    bot.run(TOKEN)
+except Exception as e:
+    print(f"An error occurred: {e}")
 
