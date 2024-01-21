@@ -5,6 +5,7 @@ from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
 from player import player
 import os
+import asyncio
 
 # Load bot token from config file
 from config import TOKEN
@@ -24,16 +25,28 @@ async def on_ready():
 # Command handling JOIN
 @bot.command(name='join',help='Joins the voice channel')
 async def joinCommand(ctx):
-    bot.voice_contexts[ctx.guild.id] = ctx
-    await join.join_command(ctx)
+    try:
+        bot.voice_contexts[ctx.guild.id] = ctx
+        await join.join_command(ctx)
+    except Exception as e:
+        await disconnect.disconnect_command(ctx)
+        bot.voice_contexts.pop(ctx.guild.id, None)
+        bot.voice_contexts[ctx.guild.id] = ctx
+        await join.join_command(ctx)
 
 # Command handling PLAY
 @bot.command(name='play',help='Used to play songs')
 async def playCommand(ctx,*args):
-
-    bot.voice_contexts[ctx.guild.id] = ctx
-    url = ' '.join(args)
-    await play.play_command(ctx,url)
+    try:
+        bot.voice_contexts[ctx.guild.id] = ctx
+        url = ' '.join(args)
+        await play.play_command(ctx,url)
+    except Exception as e:
+        await disconnect.disconnect_command(ctx)
+        bot.voice_contexts.pop(ctx.guild.id, None)
+        bot.voice_contexts[ctx.guild.id] = ctx
+        url = ' '.join(args)
+        await play.play_command(ctx,url)
 
 @bot.command(name='disconnect', help='Disconnects the bot from the voice channel')
 async def disconnectCommand(ctx):
@@ -69,9 +82,7 @@ async def on_voice_state_update(member, before, after):
 
         # Handle the bot being forcibly disconnected
         if guild_id in player.song_queues:
-            print(f"Bot forcibly disconnected from {before.channel.name} in {guild.name}")
             voice_channel_client = discord.utils.get(bot.voice_clients, guild=guild.name)
-            # await player.disconnect_and_clear_queue(ctx)
 
             # Clear the queue for the guild
             del player.song_queues[guild_id]
@@ -81,17 +92,17 @@ async def on_voice_state_update(member, before, after):
             if text_channels:
                 notification_channel = discord.utils.get(text_channels, name=before.channel.name)
                 if notification_channel:
-                    await notification_channel.send("The bot has been forcibly disconnected, and the queue has been cleared.")
+                    await notification_channel.send("I have been forcibly disconnected, and I will clear queue too.")
                 else:
-                    print(f"Notification channel 'your_notification_channel_name' not found in {guild.name}")
+                    print(f"force disconnected from {guild.name}")
 
-        # print(bot.voice_contexts)
-        # guild_id = before.channel.id
-        # if guild_id in bot.voice_contexts:
-        #     ctx = bot.voice_contexts[guild_id]
-        #     ctx.send("You disconnected me from voice channel by force, u can use again after 1min.")
-        #     await disconnect.disconnect_command(ctx)
-        #     bot.voice_contexts.pop(guild_id, None)  # Remove the stored context
+@bot.event
+async def on_disconnect():
+    print("Disconnected from Discord. Reconnecting...")
+    await asyncio.sleep(2)  # Wait for a few seconds before attempting to reconnect
+    await bot.login(TOKEN, bot=True)
+    await bot.connect()
+
 
 
 # Run the bot with the token
