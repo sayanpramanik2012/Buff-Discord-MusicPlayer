@@ -1,11 +1,12 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands,tasks
 import youtube_dl
 from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
 from player import player
 import os
 import asyncio
+# import discord_slash
 
 # Load bot token from config file
 from config import TOKEN
@@ -16,11 +17,29 @@ intents = discord.Intents.all()
 # Create a bot instance with intents
 bot = commands.Bot(command_prefix='#', intents=intents)
 bot.voice_contexts = {}
+# slash = discord_slash.SlashCommand(bot, sync_commands=True)
+
+
+
+@tasks.loop(seconds=10)  # Update every 5 minutes (adjust as needed)
+async def update_status():
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{len(bot.voice_contexts)} servers"))
 
 # Event listener for when the bot is ready
 @bot.event
 async def on_ready():
-    print(f'{bot.user.name} has connected to Discord!')
+    print(f'Logged in as {bot.user.name}')
+    update_status.start()
+
+# @bot.command(name="try")
+# async def try_commands(ctx):
+#     embed = discord.Embed(
+#         title="Try my commands!",
+#         description="Here are some things I can do:"
+#     )
+#     for command in slash.commands:
+#         embed.add_field(name=command.name, value=command.description)
+#     await ctx.send(embed=embed)
 
 # Command handling JOIN
 @bot.command(name='join',help='Joins the voice channel')
@@ -96,12 +115,12 @@ async def on_voice_state_update(member, before, after):
                 else:
                     print(f"force disconnected from {guild.name}")
 
-@bot.event
-async def on_disconnect():
-    print("Disconnected from Discord. Reconnecting...")
-    await asyncio.sleep(2)  # Wait for a few seconds before attempting to reconnect
-    await bot.login(TOKEN, bot=True)
-    await bot.connect()
+# @bot.event
+# async def on_disconnect():
+#     print("Disconnected from Discord. Reconnecting...")
+#     await asyncio.sleep(2)  # Wait for a few seconds before attempting to reconnect
+#     await bot.login(TOKEN, bot=True)
+#     await bot.connect()
 
 
 
