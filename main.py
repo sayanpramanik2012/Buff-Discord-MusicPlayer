@@ -21,7 +21,7 @@ bot.voice_contexts = {}
 
 
 
-@tasks.loop(seconds=10)  # Update every 5 minutes (adjust as needed)
+@tasks.loop(seconds=10)  # Update every 10sec
 async def update_status():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{len(bot.voice_contexts)} servers"))
 
