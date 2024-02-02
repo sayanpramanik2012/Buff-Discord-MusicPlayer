@@ -6,6 +6,8 @@ from search import youtube
 from player import player
 import os
 import asyncio
+from threading import Thread
+from flask import Flask, render_template
 # import discord_slash
 
 # Load bot token from config file
@@ -20,6 +22,22 @@ bot.voice_contexts = {}
 # slash = discord_slash.SlashCommand(bot, sync_commands=True)
 
 
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    try:
+        # Check if the bot is connected to Discord
+        bot_is_online = bot.is_ready()
+        return render_template('index.html', bot_is_online=bot_is_online)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return render_template('index.html', bot_is_online=False)
+
+def run_flask_app():
+    app.run(debug=False)
+
+
 
 @tasks.loop(seconds=10)  # Update every 10sec
 async def update_status():
@@ -29,6 +47,11 @@ async def update_status():
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
+
+    # Start the Flask app in a new thread
+    flask_thread = Thread(target=run_flask_app)
+    flask_thread.start()
+
     update_status.start()
 
 # @bot.command(name="try")

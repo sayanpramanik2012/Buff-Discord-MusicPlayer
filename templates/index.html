@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bot Status</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #eaeaea;
+        color: #333;
+        line-height: 1.6;
+      }
+
+      header {
+        background-color: #4caf50;
+        color: #fff;
+        padding: 1em 0;
+        text-align: center;
+      }
+
+      main {
+        max-width: 800px;
+        margin: 20px auto;
+        padding: 20px;
+        background-color: #fff;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+      }
+
+      h1,
+      h2 {
+        color: #333;
+      }
+
+      .status {
+        font-size: 1.4em;
+        margin: 20px 0;
+        color: #4caf50;
+        text-align: center;
+      }
+
+      .console {
+        width: 100%;
+        height: 300px;
+        background-color: #333;
+        color: #fff;
+        overflow-y: auto;
+        padding: 15px;
+        box-sizing: border-box;
+        font-family: "Courier New", Courier, monospace;
+        border-radius: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Buff Music Player Status</h1>
+    </header>
+
+    <main>
+      <h2>Welcome!</h2>
+      <p class="status">
+        Bot is {% if bot_is_online %}online{% else %}offline{% endif %}
+      </p>
+      <div class="console">
+        <!-- {% for log in logs %} {{ log|safe }}<br />
+        {% endfor %} -->
+      </div>
+    </main>
+  </body>
+</html>
