@@ -1,3 +1,4 @@
+from tenacity import retry, stop_after_attempt, wait_fixed
 import discord
 from discord.ext import commands,tasks
 import youtube_dl
@@ -8,7 +9,6 @@ import os
 import asyncio
 from threading import Thread
 from flask import Flask, render_template
-# import discord_slash
 
 # Load bot token from config file
 from config import TOKEN
@@ -19,8 +19,6 @@ intents = discord.Intents.all()
 # Create a bot instance with intents
 bot = commands.Bot(command_prefix='#', intents=intents)
 bot.voice_contexts = {}
-# slash = discord_slash.SlashCommand(bot, sync_commands=True)
-
 
 app = Flask(__name__)
 
@@ -37,7 +35,9 @@ def index():
 def run_flask_app():
     app.run(debug=False)
 
-
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+async def run_bot():
+    await bot.start(TOKEN)
 
 @tasks.loop(seconds=10)  # Update every 10sec
 async def update_status():
@@ -53,16 +53,6 @@ async def on_ready():
     flask_thread.start()
 
     update_status.start()
-
-# @bot.command(name="try")
-# async def try_commands(ctx):
-#     embed = discord.Embed(
-#         title="Try my commands!",
-#         description="Here are some things I can do:"
-#     )
-#     for command in slash.commands:
-#         embed.add_field(name=command.name, value=command.description)
-#     await ctx.send(embed=embed)
 
 # Command handling JOIN
 @bot.command(name='join',help='Joins the voice channel')
@@ -138,18 +128,8 @@ async def on_voice_state_update(member, before, after):
                 else:
                     print(f"force disconnected from {guild.name}")
 
-# @bot.event
-# async def on_disconnect():
-#     print("Disconnected from Discord. Reconnecting...")
-#     await asyncio.sleep(2)  # Wait for a few seconds before attempting to reconnect
-#     await bot.login(TOKEN, bot=True)
-#     await bot.connect()
-
-
-
-# Run the bot with the token
 try:
-    bot.run(TOKEN)
+    run_bot()
 except Exception as e:
     print(f"An error occurred: {e}")
 
