@@ -1,6 +1,6 @@
 from tenacity import retry, stop_after_attempt, wait_fixed
 import discord
-from discord.ext import commands,tasks
+from discord.ext import commands, tasks
 import youtube_dl
 from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
@@ -55,7 +55,7 @@ async def on_ready():
     update_status.start()
 
 # Command handling JOIN
-@bot.command(name='join',help='Joins the voice channel')
+@bot.command(name='join', help='Joins the voice channel')
 async def joinCommand(ctx):
     try:
         bot.voice_contexts[ctx.guild.id] = ctx
@@ -67,42 +67,42 @@ async def joinCommand(ctx):
         await join.join_command(ctx)
 
 # Command handling PLAY
-@bot.command(name='play',help='Used to play songs')
-async def playCommand(ctx,*args):
+@bot.command(name='play', help='Used to play songs')
+async def playCommand(ctx, *args):
     try:
         bot.voice_contexts[ctx.guild.id] = ctx
         url = ' '.join(args)
-        await play.play_command(ctx,url)
+        await play.play_command(ctx, url)
     except Exception as e:
         await disconnect.disconnect_command(ctx)
         bot.voice_contexts.pop(ctx.guild.id, None)
         bot.voice_contexts[ctx.guild.id] = ctx
         url = ' '.join(args)
-        await play.play_command(ctx,url)
+        await play.play_command(ctx, url)
 
 @bot.command(name='disconnect', help='Disconnects the bot from the voice channel')
 async def disconnectCommand(ctx):
     await disconnect.disconnect_command(ctx)
     bot.voice_contexts.pop(ctx.guild.id, None)
 
-@bot.command(name='stop',help='Disconnects the bot from the voice channel')
+@bot.command(name='stop', help='Disconnects the bot from the voice channel')
 async def disconnectCommand(ctx):
     await disconnect.disconnect_command(ctx)
     bot.voice_contexts.pop(ctx.guild.id, None)
 
-@bot.command(name='pause',help='Pause the bot while playing')
+@bot.command(name='pause', help='Pause the bot while playing')
 async def pauseCommand(ctx):
     await pause.pause_command(ctx)
 
-@bot.command(name='resume',help='Resume the bot while paused')
+@bot.command(name='resume', help='Resume the bot while paused')
 async def resumeCommand(ctx):
     await resume.resume_command(ctx)
 
-@bot.command(name='skip',help='Skip to next song')
+@bot.command(name='skip', help='Skip to next song')
 async def skipCommand(ctx):
     await skip.skip_command(ctx)
 
-@bot.command(name='shuffle',help='Shuffles your queue')
+@bot.command(name='shuffle', help='Shuffles your queue')
 async def shuffle_command(ctx):
     await player.shuffle_queue(ctx)
 
@@ -128,8 +128,8 @@ async def on_voice_state_update(member, before, after):
                 else:
                     print(f"force disconnected from {guild.name}")
 
-try:
-    run_bot()
-except Exception as e:
-    print(f"An error occurred: {e}")
-
+if __name__ == "__main__":
+    try:
+        asyncio.run(run_bot())
+    except Exception as e:
+        print(f"An error occurred: {e}")
