@@ -1,7 +1,7 @@
 import discord
 from . import join  # Import the join module
-from search import youtube  # Import the join and youtube modules
-from player import player
+from search import youtube, spotify  # Import the join and youtube modules
+from player import ytplayer, spotifyplayer
 from search import youtubeplaylist, spotifyplaylist
 
 
@@ -18,17 +18,19 @@ async def play_command(ctx, url):
         return await spotifyplaylist.get_spotify_playlist_tracks(url,ctx)
     else:
         if 'spotify.com/track/'in url:
-            await ctx.send("I cant play single songs from spotify give me song name instead.")
+            await ctx.send("I can only play preview of the songs from spotify. Give me song name instead to play whole song. but before ask me to stop playing by using command '#stop'")
+            return await spotifyplayer.enqueue_spotify_track(ctx, url)
 
-    # Your logic for playing music can go here
+
     if not 'youtube.com/playlist?list=' in url and not 'spotify.com/playlist/' in url:
         from_playlist=False
-        audio_url = await youtube.search_youtube(url,ctx)
+        # await spotify.search_spotify(url)
+        ytaudio_url = await youtube.search_youtube(url,ctx)
     else:
         if 'youtube.com/playlist?list=' in url:
             return await youtubeplaylist.handle_youtube_playlist(url, ctx)
 
-    if audio_url:
-        await player.enqueue_song(ctx, audio_url,from_playlist)
+    if ytaudio_url:
+        await ytplayer.enqueue_song(ctx, ytaudio_url,from_playlist)
     else:
         await ctx.send("Failed to get audio URL. Please check the provided query.")
