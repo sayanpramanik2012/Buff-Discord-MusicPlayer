@@ -4,7 +4,7 @@ import discord
 from pytube import YouTube
 song_queues = {}
 import asyncio
-import youtube_dl
+import yt_dlp as youtube_dl
 from random import shuffle
 
 async def play_audio(ctx, audio_url):

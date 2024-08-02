@@ -1,7 +1,7 @@
 from tenacity import retry, stop_after_attempt, wait_fixed
 import discord
 from discord.ext import commands, tasks
-import youtube_dl
+import yt_dlp as youtube_dl
 from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
 from player import player
