@@ -1,6 +1,6 @@
 # youtubeplaylist.py
 from pytube import Playlist
-from player import player
+from player import ytplayer
 
 async def handle_youtube_playlist(query, ctx):
     try:
@@ -12,7 +12,7 @@ async def handle_youtube_playlist(query, ctx):
         
         # Enqueue each video URL in the song queue
         for video_url in video_urls:
-            await player.enqueue_song(ctx, video_url,from_playlist=True)
+            await ytplayer.enqueue_song(ctx, video_url,from_playlist=True)
             # await print(video_urls)
 
         await ctx.send(f"All videos from the playlist have been added to the queue.")

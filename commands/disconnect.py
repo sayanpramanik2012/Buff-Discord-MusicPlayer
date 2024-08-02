@@ -1,12 +1,12 @@
 # disconnect.py
 import discord
-from player import player
+from player import ytplayer
 
 async def disconnect_command(ctx):
     voice_channel_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
     if voice_channel_client:
         await ctx.send("I am disconnected.")
-        await player.disconnect_and_clear_queue(ctx)
+        await ytplayer.disconnect_and_clear_queue(ctx)
         # Stop playing and disconnect from the voice channel
         voice_channel_client.stop()
         await voice_channel_client.disconnect()
