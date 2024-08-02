@@ -4,7 +4,7 @@ from discord.ext import commands, tasks
 import yt_dlp as youtube_dl
 from commands import join, pause, play, disconnect, skip, resume
 from search import youtube
-from player import player
+from player import ytplayer
 import os
 import asyncio
 from threading import Thread
@@ -104,7 +104,7 @@ async def skipCommand(ctx):
 
 @bot.command(name='shuffle', help='Shuffles your queue')
 async def shuffle_command(ctx):
-    await player.shuffle_queue(ctx)
+    await ytplayer.shuffle_queue(ctx)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -113,11 +113,11 @@ async def on_voice_state_update(member, before, after):
         guild_id = guild.id
 
         # Handle the bot being forcibly disconnected
-        if guild_id in player.song_queues:
+        if guild_id in ytplayer.song_queues:
             voice_channel_client = discord.utils.get(bot.voice_clients, guild=guild.name)
 
             # Clear the queue for the guild
-            del player.song_queues[guild_id]
+            del ytplayer.song_queues[guild_id]
 
             # Optional: Notify users about the disconnection and queue clearance
             text_channels = guild.text_channels
