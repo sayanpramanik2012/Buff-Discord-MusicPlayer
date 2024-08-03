@@ -1,6 +1,5 @@
-
 config.py
-
 __pycache__
 pip
 .cache
+credentials.json
