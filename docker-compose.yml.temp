@@ -1,0 +1,12 @@
+version: "3.8"
+
+services:
+  discord-bot:
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      BOT_TOKEN: "BOT_TOKEN_GOES_HERE"
+      PREFIX: "#"
+      SPOTIFY_CLIENT_ID: "SPOTIFY_CLIENT_ID_GOES_HERE"
+      SPOTIFY_CLIENT_SECRET: "SPOTIFY_CLIENT_SECRET_GOES_HERE"
