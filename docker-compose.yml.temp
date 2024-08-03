@@ -2,7 +2,8 @@ version: "3.8"
 
 services:
   discord-bot:
-    build: .
+    image: sayanpramanik/buff-discord-musicplayer:latest
+    container_name: DiscordMusicBotBUFF
     ports:
       - "80:80"
     environment:
