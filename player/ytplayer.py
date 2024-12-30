@@ -38,6 +38,7 @@ async def play_audio(ctx, audio_url):
                         'http_headers': {
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
                         },
+                        'use_po_token': True,
                     }
                     # print(f"Using cookies file: {ydl_opts['cookiefile']}")
                     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
