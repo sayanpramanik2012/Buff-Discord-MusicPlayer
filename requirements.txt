@@ -1,6 +1,7 @@
 discord.py
 multidict
 pytube
+pytubefix
 youtube-search
 pynacl
 ffmpeg
@@ -9,5 +10,10 @@ spotipy
 Flask
 tenacity
 yt-dlp
+youtube_dl
+os
+browser-cookie3
+watchdog
+google-api-python-client
 
 # youtube_dl       pip install git+https://github.com/ytdl-org/youtube-dl.git@master#egg=youtube_dl

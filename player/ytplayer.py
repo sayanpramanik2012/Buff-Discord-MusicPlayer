@@ -1,11 +1,12 @@
 # player.py
 from collections import deque
 import discord
-from pytube import YouTube
+from pytubefix import YouTube
 song_queues = {}
 import asyncio
 import yt_dlp as youtube_dl
 from random import shuffle
+# import os
 
 async def play_audio(ctx, audio_url):
     # Each guild should have its own voice client
@@ -31,22 +32,39 @@ async def play_audio(ctx, audio_url):
                     # Extract audio stream URL using youtube_dl
                     ydl_opts = {
                         'format': 'bestaudio/best',
-                        'quiet': True
+                        'cookiefile': './cookies.txt',
+                        'quiet': True,
+                        'outtmpl': './downloads/%(id)s.%(ext)s',  # Save the file in 'downloads' directory
+                        'http_headers': {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
+                        },
                     }
+                    # print(f"Using cookies file: {ydl_opts['cookiefile']}")
                     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(audio_url, download=False)
-                        audio_stream_url = info['url']
+                        info = ydl.extract_info(audio_url, download=True)
+                        audio_file = f'./downloads/{info["id"]}.webm'  # Path to the downloaded .webm file
+                        print(f"Downloaded audio file: {audio_file}")
                     
-                except Exception as e:
-                    # Extract audio stream URL using pytube
-                    yt = YouTube(audio_url)
-                    audio_stream_url = yt.streams.filter(only_audio=True).first()
+                    voice_client.play(await discord.FFmpegOpusAudio.from_probe(audio_file), after=after_play)
 
-                audio_settings = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                                  'options': '-vn -b:a 128k -af "bass=g=1,treble=g=1,volume=1"'}
-                voice_client.play(discord.FFmpegPCMAudio(audio_stream_url, **audio_settings), after=after_play)
+                except Exception as e:
+                    print(f"yt-dlp failed: {e}. Falling back to pytube.")
+                    # Extract audio stream URL using pytube (Fallback method)
+                    yt = YouTube(audio_url)
+                    audio_stream = yt.streams.filter(only_audio=True).first()
+                    if not audio_stream:
+                        raise Exception("No audio streams available.")
+                    audio_stream_url = audio_stream.url
+
+                    # Play the audio using FFmpeg
+                    audio_settings = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                                      'options': '-vn -b:a 128k -af "bass=g=1,treble=g=1,volume=1"'}
+                    
+                    voice_client.play(discord.FFmpegPCMAudio(audio_stream_url, **audio_settings), after=after_play)
+
             except Exception as e:
                 await ctx.send(f"Error: {e}")
+
         else:
             await ctx.send("No more songs in the queue.")
     else:

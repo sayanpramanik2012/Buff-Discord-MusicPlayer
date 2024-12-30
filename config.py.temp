@@ -1,0 +1,6 @@
+import os
+TOKEN = os.getenv('BOT_TOKEN') # For dev use: 'BOT_TOKEN_GOES_HERE'
+PREFIX = '#'
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID') # For dev use: 'SPOTIFY_CLIENT_ID_GOES_HERE'
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET') # For dev use: 'SPOTIFY_CLIENT_SECRET_GOES_HERE'
+YoutubeAPI_Key = os.getenv('YoutubeAPI_Key') # For dev use: 'YoutubeAPI_Key_GOES_HERE'

@@ -4,7 +4,6 @@ from spotipy.oauth2 import SpotifyClientCredentials
 import spotipy
 import requests
 from collections import deque
-# import discord
 song_queues = {}
 import asyncio
 from random import shuffle
@@ -13,7 +12,7 @@ from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 # Spotify setup
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
 
-async def play_spotify_track(ctx, track_url):
+async def play_audio(ctx, track_url):
     # Each guild should have its own voice client
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
     if not voice_client:
@@ -66,7 +65,7 @@ async def on_song_end(ctx, track_url):
         if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
             if not ctx.message.content.startswith("#disconnect"):
                 if len(voice_channel_client.channel.members) > 1:
-                    await play_spotify_track(ctx, track_url)
+                    await play_audio(ctx, track_url)
                 else:
                     await ctx.send(f"I am not going to play the next song, No one is there with me.")
                     await disconnect_and_clear_queue(ctx)
@@ -78,7 +77,7 @@ async def on_song_end(ctx, track_url):
                 await disconnect_and_clear_queue(ctx)
                 await voice_channel_client.disconnect()
 
-async def enqueue_spotify_track(ctx, track_url):
+async def enqueue_song(ctx, track_url):
     # Ensure there is a queue for the server
     if ctx.guild.id not in song_queues:
         song_queues[ctx.guild.id] = deque()
@@ -91,7 +90,7 @@ async def enqueue_spotify_track(ctx, track_url):
         await ctx.send(f"Currently I am paused use resume to resume")
     # If the bot is not already playing, start playing the next song in the queue
     if len(song_queues[ctx.guild.id]) == 1 and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_playing() and not discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild).is_paused():
-        await play_spotify_track(ctx, track_url)
+        await play_audio(ctx, track_url)
 
 async def disconnect_and_clear_queue(ctx):
     # Disconnect from the voice channel and clear the queue for the guild
