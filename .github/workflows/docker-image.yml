@@ -33,6 +33,7 @@ jobs:
           else
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
             echo "VERSION=${BRANCH_NAME}" >> $GITHUB_ENV
+          fi
 
       - name: Sanitize version
         run: |
