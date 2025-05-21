@@ -12,7 +12,7 @@ async def play_command(ctx, url):
     if 'spotify.com/track/' in url:
         await spotifyplayer.enqueue_song(ctx, url)
     elif 'spotify.com/playlist/' in url:
-        await spotifyplaylist.handle_spotify_playlist(url, ctx)
+        await spotifyplaylist.get_spotify_playlist_tracks(url, ctx)
     elif 'youtube.com/playlist?list=' in url:
         await youtubeplaylist.handle_youtube_playlist(url, ctx)
     else:

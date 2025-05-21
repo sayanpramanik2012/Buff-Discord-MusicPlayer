@@ -7,3 +7,4 @@ docker-compose.yml
 config.py
 cookies.txt
 player/cookies.txt
+config.py

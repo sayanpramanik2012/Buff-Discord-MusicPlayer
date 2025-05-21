@@ -2,7 +2,7 @@ import spotipy
 import asyncio
 from spotipy.oauth2 import SpotifyClientCredentials
 from . import youtube
-from player import ytplayer, spotifyplayer
+from player import ytplayer
 from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 
 CLIENT_ID = SPOTIFY_CLIENT_ID
@@ -29,7 +29,7 @@ async def get_spotify_playlist_tracks(playlist_url, ctx):
             
             try:
                 video_url = await youtube.search_youtube(query, ctx)
-                await spotifyplayer.enqueue_song(ctx, video_url, from_playlist=True)
+                await ytplayer.enqueue_song(ctx, video_url, from_playlist=True)
             except Exception as e:
                 print(f"An error occurred during YouTube search: {e}")
 

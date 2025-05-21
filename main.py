@@ -41,7 +41,7 @@ async def run_bot():
 
 @tasks.loop(seconds=10)  # Update every 10sec
 async def update_status():
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{len(bot.guilds)} servers"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{len(bot.voice_contexts)} servers"))
 
 # Event listener for when the bot is ready
 @bot.event

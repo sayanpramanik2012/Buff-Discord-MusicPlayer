@@ -6,7 +6,7 @@ song_queues = {}
 import asyncio
 import yt_dlp as youtube_dl
 from random import shuffle
-# import os
+import os
 
 async def play_audio(ctx, audio_url):
     # Each guild should have its own voice client
@@ -29,22 +29,34 @@ async def play_audio(ctx, audio_url):
 
             try:
                 try:
-                    # Extract audio stream URL using youtube_dl
-                    ydl_opts = {
-                        'format': 'bestaudio/best',
-                        'cookiefile': './cookies.txt',
-                        'quiet': True,
-                        'outtmpl': './downloads/%(id)s.%(ext)s',  # Save the file in 'downloads' directory
-                        'http_headers': {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-                        },
-                        'use_po_token': True,
-                    }
-                    # print(f"Using cookies file: {ydl_opts['cookiefile']}")
-                    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(audio_url, download=True)
-                        audio_file = f'./downloads/{info["id"]}.webm'  # Path to the downloaded .webm file
-                        print(f"Downloaded audio file: {audio_file}")
+                    # Extract video ID from URL
+                    with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
+                        info = ydl.extract_info(audio_url, download=False)
+                        video_id = info['id']
+                    
+                    # Check if file already exists
+                    audio_file = f'./downloads/{video_id}.webm'
+                    file_exists = os.path.exists(audio_file)
+                    
+                    if not file_exists:
+                        # Extract audio stream URL using youtube_dl
+                        ydl_opts = {
+                            'format': 'bestaudio[asr=48000]/bestaudio/best',
+                            'cookiefile': './cookies.txt',
+                            'quiet': True,
+                            'outtmpl': './downloads/%(id)s.%(ext)s',  # Save the file in 'downloads' directory
+                            'http_headers': {
+                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
+                            },
+                            'use_po_token': True,
+                        }
+                        # print(f"Using cookies file: {ydl_opts['cookiefile']}")
+                        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+                            info = ydl.extract_info(audio_url, download=True)
+                            audio_file = f'./downloads/{info["id"]}.webm'  # Path to the downloaded .webm file
+                            print(f"Downloaded audio file: {audio_file}")
+                    else:
+                        print(f"Using existing audio file: {audio_file}")
                     
                     voice_client.play(await discord.FFmpegOpusAudio.from_probe(audio_file), after=after_play)
 
@@ -58,8 +70,10 @@ async def play_audio(ctx, audio_url):
                     audio_stream_url = audio_stream.url
 
                     # Play the audio using FFmpeg
-                    audio_settings = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-                                      'options': '-vn -b:a 128k -af "bass=g=1,treble=g=1,volume=1"'}
+                    audio_settings = {
+                        'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+                        'options': '-vn -ar 48000 -ac 2 -b:a 192k -af "bass=g=2,treble=g=2,volume=1.2"'
+                    }
                     
                     voice_client.play(discord.FFmpegPCMAudio(audio_stream_url, **audio_settings), after=after_play)
 
