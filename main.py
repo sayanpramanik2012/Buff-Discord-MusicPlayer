@@ -9,12 +9,15 @@ import os
 import asyncio
 from threading import Thread
 from flask import Flask, render_template
+import logging
 
 # Load bot token from config file
 from config import TOKEN
 
 # Create intents
-intents = discord.Intents.all()
+intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
 
 # Create a bot instance with intents
 bot = commands.Bot(command_prefix='#', intents=intents)
@@ -43,6 +46,15 @@ async def run_bot():
 async def update_status():
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{len(bot.voice_contexts)} servers"))
 
+# Register voice events for playlist handlers
+from search.spotifyplaylist import register_voice_events as register_spotify_events
+from search.youtubeplaylist import register_voice_events as register_youtube_events
+
+def register_events():
+    """Register all event handlers"""
+    register_spotify_events(bot)
+    register_youtube_events(bot)
+
 # Event listener for when the bot is ready
 @bot.event
 async def on_ready():
@@ -53,6 +65,7 @@ async def on_ready():
     flask_thread.start()
 
     update_status.start()
+    register_events()  # Register all event handlers when bot is ready
 
 # Command handling JOIN
 @bot.command(name='join', help='Joins the voice channel')
@@ -98,13 +111,73 @@ async def pauseCommand(ctx):
 async def resumeCommand(ctx):
     await resume.resume_command(ctx)
 
-@bot.command(name='skip', help='Skip to next song')
-async def skipCommand(ctx):
-    await skip.skip_command(ctx)
+@bot.command(name='skip')
+async def skip_command(ctx):
+    """Skip the current song and play the next one"""
+    await ytplayer.skip_song(ctx)
 
 @bot.command(name='shuffle', help='Shuffles your queue')
 async def shuffle_command(ctx):
-    await ytplayer.shuffle_queue(ctx)
+    from search.spotifyplaylist import playlist_tracks, shuffle_playlist
+    if ctx.guild.id in playlist_tracks and playlist_tracks[ctx.guild.id]:
+        await shuffle_playlist(ctx)
+    else:
+        await ytplayer.shuffle_queue(ctx)
+
+@bot.command(name='queue')
+async def queue_command(ctx):
+    """Show the current song queue and playlist queues"""
+    from search.spotifyplaylist import get_playlist_queue as get_spotify_queue
+    from search.youtubeplaylist import get_playlist_queue as get_youtube_queue
+    from player import ytplayer
+    
+    # Get regular queue
+    queue_text = ""
+    if ctx.guild.id in ytplayer.song_queues and ytplayer.song_queues[ctx.guild.id]:
+        queue_text = "**Current Queue:**\n" + "\n".join([f"{i+1}. {url}" for i, url in enumerate(ytplayer.song_queues[ctx.guild.id])])
+    else:
+        queue_text = "**Current Queue:**\nNo songs in queue."
+
+    # Get Spotify playlist queue with timeout
+    try:
+        spotify_queue = await asyncio.wait_for(get_spotify_queue(ctx), timeout=5.0)
+        spotify_text = f"\n\n**Spotify Playlist Queue:**\n{spotify_queue}"
+    except asyncio.TimeoutError:
+        spotify_text = "\n\n**Spotify Playlist Queue:**\nError: Timeout while fetching queue"
+    except Exception as e:
+        # logger.error(f"Error getting Spotify queue: {e}")
+        spotify_text = "\n\n**Spotify Playlist Queue:**\nError: Failed to fetch queue"
+
+    # Get YouTube playlist queue with timeout
+    try:
+        youtube_queue = await asyncio.wait_for(get_youtube_queue(ctx), timeout=5.0)
+        youtube_text = f"\n\n**YouTube Playlist Queue:**\n{youtube_queue}"
+    except asyncio.TimeoutError:
+        youtube_text = "\n\n**YouTube Playlist Queue:**\nError: Timeout while fetching queue"
+    except Exception as e:
+        # logger.error(f"Error getting YouTube queue: {e}")
+        youtube_text = "\n\n**YouTube Playlist Queue:**\nError: Failed to fetch queue"
+
+    # Combine all queues
+    full_message = queue_text + spotify_text + youtube_text
+
+    # Split message if it's too long
+    if len(full_message) > 1900:
+        parts = []
+        current_part = ""
+        for line in full_message.split('\n'):
+            if len(current_part) + len(line) + 1 > 1900:
+                parts.append(current_part)
+                current_part = line
+            else:
+                current_part += '\n' + line if current_part else line
+        if current_part:
+            parts.append(current_part)
+
+        for i, part in enumerate(parts, 1):
+            await ctx.send(f"Queue (Part {i}/{len(parts)}):\n{part}")
+    else:
+        await ctx.send(full_message)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
