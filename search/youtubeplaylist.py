@@ -7,7 +7,7 @@ from typing import List, Dict
 from pytubefix import YouTube
 import discord
 from googleapiclient.discovery import build
-from config import YoutubeAPI_Key
+from config import YOUTUBE_API_KEY
 import warnings
 
 # Suppress the file_cache warning
@@ -68,11 +68,11 @@ async def process_next_track(ctx):
 async def get_playlist_videos_google_api(playlist_id: str) -> List[str]:
     """Get playlist videos using Google's YouTube API"""
     try:
-        if not YoutubeAPI_Key:
+        if not YOUTUBE_API_KEY:
             logger.warning("YouTube API key not set. Falling back to pytube.")
             raise ValueError("YouTube API key not set")
 
-        youtube = build('youtube', 'v3', developerKey=YoutubeAPI_Key)
+        youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
         video_urls = []
         next_page_token = None
 

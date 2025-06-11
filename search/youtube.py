@@ -2,7 +2,7 @@
 from pytube import YouTube
 from youtube_search import YoutubeSearch
 from googleapiclient.discovery import build
-from config import YoutubeAPI_Key
+from config import YOUTUBE_API_KEY
 import logging
 import warnings
 
@@ -20,12 +20,12 @@ async def search_youtube(query, ctx):
         
         # First try using Google's YouTube Data API
         try:
-            if not YoutubeAPI_Key:
+            if not YOUTUBE_API_KEY:
                 logger.warning("YouTube API key is not set. Falling back to youtube-search.")
                 raise ValueError("YouTube API key is not set")
                 
-            logger.info(f"Attempting to search with YouTube API key: {YoutubeAPI_Key[:5]}...")
-            youtube = build('youtube', 'v3', developerKey=YoutubeAPI_Key)
+            logger.info(f"Attempting to search with YouTube API key: {YOUTUBE_API_KEY[:5]}...")
+            youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
             
             # Search for videos
             search_response = youtube.search().list(

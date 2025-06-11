@@ -10,7 +10,7 @@ SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET') # For dev use: 'SPOTI
 # 2. Create a new project or select existing one
 # 3. Enable YouTube Data API v3
 # 4. Create credentials (API key)
-# 5. Set the key in your environment: export YoutubeAPI_Key=your_key_here
-YoutubeAPI_Key = os.getenv('YoutubeAPI_Key')
-if not YoutubeAPI_Key:
+# 5. Set the key in your environment: export YOUTUBE_API_KEY=your_key_here
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
+if not YOUTUBE_API_KEY:
     print("Warning: YouTube API key not set. YouTube search will use fallback method.")
