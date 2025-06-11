@@ -12,7 +12,7 @@ from flask import Flask, render_template
 import logging
 
 # Load bot token from config file
-from config import TOKEN
+from config import TOKEN, PREFIX
 
 # Create intents
 intents = discord.Intents.default()
@@ -20,7 +20,7 @@ intents.message_content = True
 intents.voice_states = True
 
 # Create a bot instance with intents
-bot = commands.Bot(command_prefix='#', intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.voice_contexts = {}
 
 app = Flask(__name__)
