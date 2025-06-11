@@ -5,7 +5,7 @@ services:
     image: sayanpramanik/buff-discord-musicplayer:latest
     container_name: DiscordMusicBotBUFF
     ports:
-      - "80:80"
+      - "80:5000"
     environment:
       BOT_TOKEN: "BOT_TOKEN_GOES_HERE"
       PREFIX: "#"

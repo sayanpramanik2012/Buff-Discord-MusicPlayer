@@ -9,6 +9,7 @@ import os
 from functools import lru_cache
 import logging
 from search.spotifyplaylist import playlist_tracks, process_next_track
+from commands import disconnect
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 # Constants
 AUDIO_SETTINGS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -ar 48000 -ac 2 -b:a 192k -af "bass=g=2,treble=g=2,volume=1.2"'
+    'options': '-vn -ar 48000 -ac 2 -b:a 192k -af "bass=g=2,treble=g=2,volume=1"'
 }
 
 YDL_OPTS = {
@@ -37,7 +38,7 @@ song_queues = {}
 @lru_cache(maxsize=100)
 def get_video_info(video_id):
     """Cache video information to avoid repeated API calls"""
-    with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
+    with youtube_dl.YoutubeDL(YDL_OPTS) as ydl:
         return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
 
 async def download_audio(audio_url, video_id):
