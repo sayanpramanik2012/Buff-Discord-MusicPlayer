@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - "main"
+      - "prod"  # Added prod branch to push trigger
     tags:
       - 'v*.*.*'
-  pull_request:
-    branches:
-      - "main"
 
 jobs:
   build:
@@ -25,45 +23,39 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract version number or branch name
-        id: extract_ref
+      - name: Get IST timestamp
+        id: datetime
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          else
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            echo "VERSION=${BRANCH_NAME}" >> $GITHUB_ENV
-          fi
+          DATETIME_IST=$(TZ="Asia/Kolkata" date +'%Y%m%d-%H%M%S')
+          echo "DATETIME_IST=${DATETIME_IST}" >> $GITHUB_ENV
 
-      - name: Sanitize version
+      - name: Determine tags
+        id: tags
         run: |
-          SANITIZED_VERSION=$(echo "${{ env.VERSION }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          echo "SANITIZED_VERSION=${SANITIZED_VERSION}" >> $GITHUB_ENV
+          if [[ "$GITHUB_REF_NAME" == "main" ]]; then
+            echo "TAG1=sayanpramanik/buff-discord-musicplayer:main_${{ env.DATETIME_IST }}" >> $GITHUB_ENV
+            echo "TAG2=sayanpramanik/buff-discord-musicplayer:main_latestDev" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF_NAME" == "prod" ]]; then
+            echo "TAG1=sayanpramanik/buff-discord-musicplayer:prod_${{ env.DATETIME_IST }}" >> $GITHUB_ENV
+            echo "TAG2=sayanpramanik/buff-discord-musicplayer:latest" >> $GITHUB_ENV
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            SANITIZED_VERSION=$(echo "$VERSION" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+            echo "TAG1=sayanpramanik/buff-discord-musicplayer:$SANITIZED_VERSION" >> $GITHUB_ENV
+            echo "TAG2=sayanpramanik/buff-discord-musicplayer:latest" >> $GITHUB_ENV
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
         with:
           platforms: all
 
-      - name: Build and push multi-arch Docker image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            sayanpramanik/buff-discord-musicplayer:${{ env.SANITIZED_VERSION }}
-            sayanpramanik/buff-discord-musicplayer:latest
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-          body: |
-            Docker image version ${{ env.SANITIZED_VERSION }} released with multi-architecture support.
+            ${{ env.TAG1 }}
+            ${{ env.TAG2 }}
