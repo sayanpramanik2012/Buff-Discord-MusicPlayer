@@ -10,6 +10,8 @@ import asyncio
 from threading import Thread
 from flask import Flask, render_template
 import logging
+from datetime import datetime
+import humanize
 
 # Load bot token from config file
 from config import TOKEN, PREFIX
@@ -25,18 +27,82 @@ bot.voice_contexts = {}
 
 app = Flask(__name__)
 
+def get_cached_songs():
+    """Get list of cached songs from downloads directory"""
+    songs = []
+    downloads = []
+    downloads_dir = './downloads'
+    
+    if not os.path.exists(downloads_dir):
+        return songs, downloads
+        
+    for filename in os.listdir(downloads_dir):
+        if filename.endswith('.webm'):
+            file_path = os.path.join(downloads_dir, filename)
+            video_id = os.path.splitext(filename)[0]
+            file_size = os.path.getsize(file_path)
+            last_modified = datetime.fromtimestamp(os.path.getmtime(file_path))
+            
+            # Try to get video info from cache
+            try:
+                video_info = ytplayer.get_video_info(video_id)
+                title = video_info.get('title', f'Unknown Title ({video_id})')
+            except:
+                title = f'Unknown Title ({video_id})'
+            
+            song_data = {
+                'id': video_id,
+                'title': title,
+                'size': humanize.naturalsize(file_size),
+                'date': last_modified.strftime('%Y-%m-%d %H:%M:%S'),
+                'timestamp': last_modified.timestamp()
+            }
+            
+            # Check if the song is in any active queue
+            is_in_queue = False
+            for guild_id, queue in ytplayer.song_queues.items():
+                if any(video_id in url for url in queue):
+                    is_in_queue = True
+                    break
+            
+            if is_in_queue:
+                songs.append(song_data)
+            else:
+                downloads.append(song_data)
+    
+    # Sort by date modified (newest first)
+    return sorted(songs, key=lambda x: x['timestamp'], reverse=True), sorted(downloads, key=lambda x: x['timestamp'], reverse=True)
+
 @app.route('/')
 def index():
     try:
         # Check if the bot is connected to Discord
         bot_is_online = bot.is_ready()
-        return render_template('index.html', bot_is_online=bot_is_online)
+        
+        # Get cached songs and downloads
+        cached_songs, downloads = get_cached_songs()
+        
+        # Get total servers and users
+        total_servers = len(bot.guilds)
+        total_users = sum(guild.member_count for guild in bot.guilds)
+        
+        return render_template('index.html',
+                             bot_is_online=bot_is_online,
+                             cached_songs=cached_songs,
+                             downloads=downloads,
+                             total_servers=total_servers,
+                             total_users=total_users)
     except Exception as e:
         print(f"An error occurred: {e}")
-        return render_template('index.html', bot_is_online=False)
+        return render_template('index.html',
+                             bot_is_online=False,
+                             cached_songs=[],
+                             downloads=[],
+                             total_servers=0,
+                             total_users=0)
 
 def run_flask_app():
-    app.run(debug=False)
+    app.run(debug=False, host='0.0.0.0')
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 async def run_bot():

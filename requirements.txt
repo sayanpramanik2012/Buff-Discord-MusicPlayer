@@ -15,5 +15,6 @@ youtube_dl
 browser-cookie3
 watchdog
 google-api-python-client
+humanize
 
 # youtube_dl       pip install git+https://github.com/ytdl-org/youtube-dl.git@master#egg=youtube_dl

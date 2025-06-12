@@ -71,6 +71,34 @@ async def get_audio_stream(audio_url):
         logger.error(f"pytube fallback failed: {e}")
         raise
 
+async def on_song_end(ctx):
+    """Handle song end with consistent queue management"""
+    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    
+    if not voice_client or not voice_client.is_connected():
+        return
+
+    # Check regular queue first
+    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
+        next_song = song_queues[ctx.guild.id][0]  # Don't pop here
+        await play_audio(ctx, next_song)
+    else:
+        # Check Spotify playlist
+        from search.spotifyplaylist import playlist_tracks as spotify_tracks
+        if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
+            from search.spotifyplaylist import process_next_track as process_spotify_track
+            await process_spotify_track(ctx)
+        # Check YouTube playlist
+        elif hasattr(ctx, 'youtube_playlist_tracks'):
+            if ctx.guild.id in ctx.youtube_playlist_tracks and ctx.youtube_playlist_tracks[ctx.guild.id]:
+                from search.youtubeplaylist import process_next_track as process_youtube_track
+                await process_youtube_track(ctx)
+        else:
+            # Final fallback if no tracks found
+            await ctx.send("Queue is empty. Disconnecting...")
+            await disconnect_and_clear_queue(ctx)
+            await voice_client.disconnect()
+
 async def play_audio(ctx, audio_url):
     """Play audio with improved error handling and resource management"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
@@ -78,93 +106,46 @@ async def play_audio(ctx, audio_url):
         logger.warning("Cannot play audio: Bot is not in voice channel")
         return
 
-    if not voice_client.is_playing() and ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        audio_url = song_queues[ctx.guild.id].popleft()
-        await ctx.send(f"Playing: {audio_url}")
+    # Extract video ID and get info
+    try:
+        with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(audio_url, download=False)
+            video_id = info['id']
+            title = info.get('title', audio_url)
+    except Exception as e:
+        logger.error(f"Info extraction failed: {e}")
+        await ctx.send(f"Error retrieving video info: {e}")
+        return
 
+    # Ensure queue exists and pop current song
+    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
+        current_song = song_queues[ctx.guild.id].popleft()  # Actual pop happens here
+        await ctx.send(f"Now playing: **{title}**")
+
+    try:
+        # Try downloading with yt-dlp first
+        audio_file = await download_audio(audio_url, video_id)
+        audio_source = await discord.FFmpegOpusAudio.from_probe(audio_file)
+    except Exception as e:
+        logger.warning(f"yt-dlp failed, falling back to pytube: {e}")
         try:
-            # Extract video ID and get info
-            with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
-                info = ydl.extract_info(audio_url, download=False)
-                video_id = info['id']
+            audio_stream_url = await get_audio_stream(audio_url)
+            audio_source = discord.FFmpegPCMAudio(audio_stream_url, **AUDIO_SETTINGS)
+        except Exception as fallback_error:
+            logger.error(f"All audio source methods failed: {fallback_error}")
+            await ctx.send("❌ All audio retrieval methods failed")
+            return
 
-            try:
-                # Try downloading with yt-dlp first
-                audio_file = await download_audio(audio_url, video_id)
-                # Check voice client again before playing
-                voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-                if voice_client and voice_client.is_connected():
-                    # Stop any existing playback and clean up
-                    if voice_client.is_playing():
-                        voice_client.stop()
-                    # Create new audio source
-                    audio_source = await discord.FFmpegOpusAudio.from_probe(audio_file)
-                    voice_client.play(
-                        audio_source,
-                        after=lambda e: asyncio.run_coroutine_threadsafe(
-                            on_song_end(ctx, audio_url), ctx.bot.loop
-                        )
-                    )
-                else:
-                    logger.warning("Bot disconnected while preparing to play audio")
-                    return
-            except Exception as e:
-                logger.warning(f"yt-dlp failed, falling back to pytube: {e}")
-                # Fallback to pytube
-                audio_stream_url = await get_audio_stream(audio_url)
-                # Check voice client again before playing
-                voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-                if voice_client and voice_client.is_connected():
-                    # Stop any existing playback and clean up
-                    if voice_client.is_playing():
-                        voice_client.stop()
-                    # Create new audio source
-                    audio_source = discord.FFmpegPCMAudio(audio_stream_url, **AUDIO_SETTINGS)
-                    voice_client.play(
-                        audio_source,
-                        after=lambda e: asyncio.run_coroutine_threadsafe(
-                            on_song_end(ctx, audio_url), ctx.bot.loop
-                        )
-                    )
-                else:
-                    logger.warning("Bot disconnected while preparing to play audio")
-                    return
-        except Exception as e:
-            logger.error(f"Playback error: {e}")
-            await ctx.send(f"Error: {e}")
-    else:
-        await ctx.send("No more songs in the queue." if not voice_client.is_playing() else "I'm already playing music.")
-
-async def on_song_end(ctx, audio_url):
-    """Handle song end with improved state management"""
-    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-    
-    if not voice_client:
-        return
-
-    if ctx.message.content.startswith("#skip"):
-        # Ensure proper cleanup when skipping
-        if voice_client.is_playing():
-            voice_client.stop()
-        return
-
-    if not ctx.message.content.startswith("#skip"):
-        if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-            if not ctx.message.content.startswith("#disconnect"):
-                if len(voice_client.channel.members) > 1:
-                    await play_audio(ctx, audio_url)
-                else:
-                    await ctx.send("No one is in the voice channel. Disconnecting...")
-                    await disconnect_and_clear_queue(ctx)
-                    await voice_client.disconnect()
-        else:
-            # Check if there are more tracks in the playlist
-            if ctx.guild.id in playlist_tracks and playlist_tracks[ctx.guild.id]:
-                await process_next_track(ctx)
-            else:
-                await ctx.send("Queue is empty. Disconnecting...")
-                await disconnect_and_clear_queue(ctx)
-                await voice_client.disconnect()
+    try:
+        voice_client.play(
+            audio_source,
+            after=lambda e: asyncio.run_coroutine_threadsafe(
+                on_song_end(ctx), ctx.bot.loop
+            ) if not e else None
+        )
+    except Exception as play_error:
+        logger.error(f"Playback failed: {play_error}")
+        await ctx.send(f"❌ Playback error: {play_error}")
 
 async def enqueue_song(ctx, audio_url, from_playlist=False):
     """Enqueue song with improved state management"""
@@ -184,9 +165,8 @@ async def enqueue_song(ctx, audio_url, from_playlist=False):
         if voice_client.is_paused():
             await ctx.send("Currently paused. Use `resume` to continue.")
 
-    if (len(song_queues[ctx.guild.id]) == 1 and 
-        not voice_client.is_playing() and 
-        not voice_client.is_paused()):
+    # Only start playing if nothing is playing
+    if not voice_client.is_playing() and not voice_client.is_paused():
         await play_audio(ctx, audio_url)
 
 async def disconnect_and_clear_queue(ctx):
@@ -210,67 +190,14 @@ async def shuffle_queue(ctx):
 
 async def skip_song(ctx):
     """Skip the current song and play the next one in the queue"""
-    if not ctx.voice_client or not ctx.voice_client.is_connected():
+    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    if not voice_client or not voice_client.is_connected():
         await ctx.send("I'm not playing anything right now.")
         return
 
-    # Stop the current audio
-    if ctx.voice_client.is_playing():
-        ctx.voice_client.stop()
-    
-    # Check if there are more songs in the queue
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        # Get the next song
-        next_song = song_queues[ctx.guild.id][0]
-        # Remove it from the queue
-        song_queues[ctx.guild.id].pop(0)
-        # Play the next song
-        await play_audio(ctx, next_song)
-    else:
-        # Check if there are tracks in the Spotify playlist
-        from search.spotifyplaylist import playlist_tracks as spotify_tracks
-        if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
-            from search.spotifyplaylist import process_next_track as process_spotify_track
-            await process_spotify_track(ctx)
-            return
-        # Check if there are tracks in the YouTube playlist
-        from search.youtubeplaylist import playlist_tracks as youtube_tracks
-        if ctx.guild.id in youtube_tracks and youtube_tracks[ctx.guild.id]:
-            from search.youtubeplaylist import process_next_track as process_youtube_track
-            await process_youtube_track(ctx)
-            return
-        
-        # If no more songs in any queue, disconnect
-        await ctx.send("No more songs in the queue.")
-        await disconnect(ctx)
-
-async def on_song_end(ctx):
-    """Handle what happens when a song ends"""
-    if not ctx.voice_client or not ctx.voice_client.is_connected():
-        return
-
-    # Check if there are more songs in the queue
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        # Get the next song
-        next_song = song_queues[ctx.guild.id][0]
-        # Remove it from the queue
-        song_queues[ctx.guild.id].pop(0)
-        # Play the next song
-        await play_audio(ctx, next_song)
-    else:
-        # Check if there are tracks in the Spotify playlist
-        from search.spotifyplaylist import playlist_tracks as spotify_tracks
-        if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
-            from search.spotifyplaylist import process_next_track as process_spotify_track
-            await process_spotify_track(ctx)
-            return
-        # Check if there are tracks in the YouTube playlist
-        from search.youtubeplaylist import playlist_tracks as youtube_tracks
-        if ctx.guild.id in youtube_tracks and youtube_tracks[ctx.guild.id]:
-            from search.youtubeplaylist import process_next_track as process_youtube_track
-            await process_youtube_track(ctx)
-            return
-        
-        # If no more songs in any queue, disconnect
-        await ctx.send("No more songs in the queue.")
-        await disconnect(ctx)
+    # Stop current playback (triggers after callback)
+    if voice_client.is_playing():
+        voice_client.stop()
+    elif voice_client.is_paused():
+        voice_client.resume()
+        voice_client.stop()
