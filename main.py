@@ -129,7 +129,36 @@ def index():
                              total_files=0)
 
 def run_flask_app():
-    app.run(debug=False)
+    app.run(debug=False,host='0.0.0.0')
+
+def get_total_songs():
+    downloads_dir = './downloads'
+    if not os.path.exists(downloads_dir):
+        return 0
+    try:
+        return len([f for f in os.listdir(downloads_dir) if f.endswith('.webm')])
+    except Exception as e:
+        print(f"Error counting songs: {e}")
+        return 0
+
+@app.route('/api/songs')
+def api_songs():
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        downloads, total_files, total_pages = get_cached_songs(page, per_page)
+        return json.dumps({
+            'songs': downloads,
+            'total_files': total_files,
+            'total_pages': total_pages
+        })
+    except Exception as e:
+        print(f"API error: {e}")
+        return json.dumps({
+            'songs': [],
+            'total_files': 0,
+            'total_pages': 0
+        })
 
 def get_total_songs():
     downloads_dir = './downloads'
