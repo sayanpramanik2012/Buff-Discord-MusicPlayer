@@ -3,4 +3,14 @@ TOKEN = os.getenv('BOT_TOKEN') # For dev use: 'BOT_TOKEN_GOES_HERE'
 PREFIX = '#'
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID') # For dev use: 'SPOTIFY_CLIENT_ID_GOES_HERE'
 SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET') # For dev use: 'SPOTIFY_CLIENT_SECRET_GOES_HERE'
-YoutubeAPI_Key = os.getenv('YoutubeAPI_Key') # For dev use: 'YoutubeAPI_Key_GOES_HERE'
+
+# Get YouTube API key from environment variable
+# To get a valid API key:
+# 1. Go to https://console.cloud.google.com/
+# 2. Create a new project or select existing one
+# 3. Enable YouTube Data API v3
+# 4. Create credentials (API key)
+# 5. Set the key in your environment: export YOUTUBE_API_KEY=your_key_here
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
+if not YOUTUBE_API_KEY:
+    print("Warning: YouTube API key not set. YouTube search will use fallback method.")

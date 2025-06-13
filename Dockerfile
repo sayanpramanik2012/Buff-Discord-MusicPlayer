@@ -14,6 +14,6 @@ RUN pip install git+https://github.com/ytdl-org/youtube-dl.git@master#egg=youtub
 
 COPY . /app
 
-EXPOSE 80
+EXPOSE 5000
 
 CMD ["python", "main.py"]

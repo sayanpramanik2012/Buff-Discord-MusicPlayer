@@ -8,11 +8,14 @@ from player import ytplayer
 import os
 import asyncio
 from threading import Thread
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 import logging
+from datetime import datetime
+import humanize
+import json
 
 # Load bot token from config file
-from config import TOKEN
+from config import TOKEN, PREFIX
 
 # Create intents
 intents = discord.Intents.default()
@@ -20,23 +23,142 @@ intents.message_content = True
 intents.voice_states = True
 
 # Create a bot instance with intents
-bot = commands.Bot(command_prefix='#', intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 bot.voice_contexts = {}
 
 app = Flask(__name__)
 
+# In main.py - update get_cached_songs function
+def get_cached_songs(page=1, per_page=20):
+    """Get list of downloaded songs from downloads directory with pagination"""
+    downloads = []
+    downloads_dir = './downloads'
+    
+    if not os.path.exists(downloads_dir):
+        return downloads, 0, 0
+        
+    try:
+        # Get only the files we need for this page
+        all_files = []
+        for filename in os.listdir(downloads_dir):
+            # FIX: Allow both .webm and .mp3 files
+            if filename.endswith(('.webm', '.mp3')):
+                file_path = os.path.join(downloads_dir, filename)
+                stat = os.stat(file_path)
+                all_files.append({
+                    'filename': filename,
+                    'size': stat.st_size,
+                    'mtime': stat.st_mtime
+                })
+        
+        # Sort files by modification time (newest first)
+        all_files.sort(key=lambda x: x['mtime'], reverse=True)
+        total_files = len(all_files)
+        
+        # Calculate pagination
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        current_page_files = all_files[start_idx:end_idx]
+        
+        # Process only the files for current page
+        for file_info in current_page_files:
+            filename = file_info['filename']
+            video_id, ext = os.path.splitext(filename)
+            
+            # Try to get video info from cache
+            try:
+                # FIX: Handle different file types
+                title = filename
+                if ext == '.webm':
+                    video_info = ytplayer.get_video_info(video_id)
+                    title = video_info.get('title', f'Unknown Title ({video_id})')
+                # Add handling for other formats if needed
+            except Exception as e:
+                print(f"Error getting video info: {e}")
+                title = f'Unknown Title ({video_id})'
+            
+            song_data = {
+                'id': video_id,
+                'title': title,
+                'size': humanize.naturalsize(file_info['size']),
+                'date': datetime.fromtimestamp(file_info['mtime']).strftime('%Y-%m-%d %H:%M:%S'),
+                'timestamp': file_info['mtime']
+            }
+            
+            downloads.append(song_data)
+        
+        return downloads, total_files, (total_files + per_page - 1) // per_page
+        
+    except Exception as e:
+        print(f"Error loading songs: {e}")
+        return [], 0, 0
+    
 @app.route('/')
 def index():
     try:
+        # Get page number from query parameters
+        page = int(request.args.get('page', 1))
+        per_page = 20
+        
         # Check if the bot is connected to Discord
         bot_is_online = bot.is_ready()
-        return render_template('index.html', bot_is_online=bot_is_online)
+        
+        # Get totals without loading all songs
+        total_files = get_total_songs()
+        total_pages = (total_files + per_page - 1) // per_page
+        
+        # Get total servers and users
+        total_servers = len(bot.guilds)
+        total_users = sum(guild.member_count for guild in bot.guilds)
+        
+        return render_template('index.html',
+                             bot_is_online=bot_is_online,
+                             total_servers=total_servers,
+                             total_users=total_users,
+                             current_page=page,
+                             total_pages=total_pages,
+                             total_files=total_files)
     except Exception as e:
         print(f"An error occurred: {e}")
-        return render_template('index.html', bot_is_online=False)
+        return render_template('index.html',
+                             bot_is_online=False,
+                             total_servers=0,
+                             total_users=0,
+                             current_page=1,
+                             total_pages=1,
+                             total_files=0)
 
 def run_flask_app():
     app.run(debug=False)
+
+def get_total_songs():
+    downloads_dir = './downloads'
+    if not os.path.exists(downloads_dir):
+        return 0
+    try:
+        return len([f for f in os.listdir(downloads_dir) if f.endswith('.webm')])
+    except Exception as e:
+        print(f"Error counting songs: {e}")
+        return 0
+
+@app.route('/api/songs')
+def api_songs():
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = 20
+        downloads, total_files, total_pages = get_cached_songs(page, per_page)
+        return json.dumps({
+            'songs': downloads,
+            'total_files': total_files,
+            'total_pages': total_pages
+        })
+    except Exception as e:
+        print(f"API error: {e}")
+        return json.dumps({
+            'songs': [],
+            'total_files': 0,
+            'total_pages': 0
+        })
 
 @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
 async def run_bot():

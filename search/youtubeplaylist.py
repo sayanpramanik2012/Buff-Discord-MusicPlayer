@@ -6,6 +6,12 @@ import logging
 from typing import List, Dict
 from pytubefix import YouTube
 import discord
+from googleapiclient.discovery import build
+from config import YOUTUBE_API_KEY
+import warnings
+
+# Suppress the file_cache warning
+warnings.filterwarnings('ignore', message='file_cache is only supported with oauth2client<4.0.0')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,14 +65,59 @@ async def process_next_track(ctx):
         playlist_tracks[ctx.guild.id].pop(0)
         await process_next_track(ctx)
 
+async def get_playlist_videos_google_api(playlist_id: str) -> List[str]:
+    """Get playlist videos using Google's YouTube API"""
+    try:
+        if not YOUTUBE_API_KEY:
+            logger.warning("YouTube API key not set. Falling back to pytube.")
+            raise ValueError("YouTube API key not set")
+
+        youtube = build('youtube', 'v3', developerKey=YOUTUBE_API_KEY)
+        video_urls = []
+        next_page_token = None
+
+        while True:
+            # Get playlist items
+            request = youtube.playlistItems().list(
+                part='snippet',
+                playlistId=playlist_id,
+                maxResults=50,
+                pageToken=next_page_token
+            )
+            response = request.execute()
+
+            # Extract video IDs and create URLs
+            for item in response['items']:
+                video_id = item['snippet']['resourceId']['videoId']
+                video_url = f'https://www.youtube.com/watch?v={video_id}'
+                video_urls.append(video_url)
+
+            # Check if there are more pages
+            next_page_token = response.get('nextPageToken')
+            if not next_page_token:
+                break
+
+        return video_urls
+    except Exception as e:
+        logger.error(f"Error getting playlist videos with Google API: {e}")
+        raise
+
 async def handle_youtube_playlist(query: str, ctx):
     """Handle YouTube playlist with improved error handling and batch processing"""
     try:
-        # Create a Playlist object
-        playlist = Playlist(query)
+        # Extract playlist ID from URL
+        playlist_id = query.split('list=')[-1].split('&')[0]
         
-        # Get total number of videos and convert to list
-        video_urls = list(playlist.video_urls)
+        try:
+            # First try using Google's YouTube API
+            logger.info("Attempting to get playlist videos using Google API")
+            video_urls = await get_playlist_videos_google_api(playlist_id)
+        except Exception as e:
+            logger.warning(f"Google API failed, falling back to pytube: {e}")
+            # Fall back to pytube
+            playlist = Playlist(query)
+            video_urls = list(playlist.video_urls)
+
         total_videos = len(video_urls)
         if total_videos == 0:
             await ctx.send("No videos found in the playlist.")
