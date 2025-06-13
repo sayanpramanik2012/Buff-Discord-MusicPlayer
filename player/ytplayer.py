@@ -1,4 +1,4 @@
-# player.py
+# ytplayer.py
 from collections import deque
 import discord
 from pytubefix import YouTube
@@ -80,25 +80,35 @@ async def on_song_end(ctx):
 
     # Check regular queue first
     if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        next_song = song_queues[ctx.guild.id][0]  # Don't pop here
+        next_song = song_queues[ctx.guild.id][0]
         await play_audio(ctx, next_song)
     else:
         # Check Spotify playlist
-        from search.spotifyplaylist import playlist_tracks as spotify_tracks
-        if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
+        try:
+            from search.spotifyplaylist import playlist_tracks as spotify_tracks
             from search.spotifyplaylist import process_next_track as process_spotify_track
-            await process_spotify_track(ctx)
-        # Check YouTube playlist
-        elif hasattr(ctx, 'youtube_playlist_tracks'):
-            if ctx.guild.id in ctx.youtube_playlist_tracks and ctx.youtube_playlist_tracks[ctx.guild.id]:
-                from search.youtubeplaylist import process_next_track as process_youtube_track
-                await process_youtube_track(ctx)
-        else:
-            # Final fallback if no tracks found
-            await ctx.send("Queue is empty. Disconnecting...")
-            await disconnect_and_clear_queue(ctx)
-            await voice_client.disconnect()
+            if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
+                await process_spotify_track(ctx)
+                return
+        except Exception as e:
+            logger.error(f"Error processing Spotify playlist: {e}")
 
+        # Check YouTube playlist
+        try:
+            from search.youtubeplaylist import playlist_tracks as youtube_tracks
+            from search.youtubeplaylist import process_next_track as process_youtube_track
+            if ctx.guild.id in youtube_tracks and youtube_tracks[ctx.guild.id]:
+                await process_youtube_track(ctx)
+                return
+        except Exception as e:
+            logger.error(f"Error processing YouTube playlist: {e}")
+
+        # Final fallback if no tracks found
+        await ctx.send("Queue is empty. Disconnecting...")
+        await disconnect_and_clear_queue(ctx)
+        if voice_client.is_connected():
+            await voice_client.disconnect()
+            
 async def play_audio(ctx, audio_url):
     """Play audio with improved error handling and resource management"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
