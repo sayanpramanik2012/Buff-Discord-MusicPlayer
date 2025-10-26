@@ -1,3 +1,4 @@
+# main.py
 from tenacity import retry, stop_after_attempt, wait_fixed
 import discord
 from discord.ext import commands, tasks
@@ -14,6 +15,15 @@ from datetime import datetime
 import humanize
 import json
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+logger = logging.getLogger(__name__)
+
 # Load bot token from config file
 from config import TOKEN, PREFIX
 
@@ -28,7 +38,7 @@ bot.voice_contexts = {}
 
 app = Flask(__name__)
 
-# In main.py - update get_cached_songs function
+# FIXED: Updated to handle both .webm and .mp3 files
 def get_cached_songs(page=1, per_page=20):
     """Get list of downloaded songs from downloads directory with pagination"""
     downloads = []
@@ -36,12 +46,12 @@ def get_cached_songs(page=1, per_page=20):
     
     if not os.path.exists(downloads_dir):
         return downloads, 0, 0
-        
+    
     try:
         # Get only the files we need for this page
         all_files = []
         for filename in os.listdir(downloads_dir):
-            # FIX: Allow both .webm and .mp3 files
+            # Allow both .webm and .mp3 files
             if filename.endswith(('.webm', '.mp3')):
                 file_path = os.path.join(downloads_dir, filename)
                 stat = os.stat(file_path)
@@ -67,14 +77,12 @@ def get_cached_songs(page=1, per_page=20):
             
             # Try to get video info from cache
             try:
-                # FIX: Handle different file types
                 title = filename
                 if ext == '.webm':
                     video_info = ytplayer.get_video_info(video_id)
                     title = video_info.get('title', f'Unknown Title ({video_id})')
-                # Add handling for other formats if needed
             except Exception as e:
-                print(f"Error getting video info: {e}")
+                logger.error(f"Error getting video info: {e}")
                 title = f'Unknown Title ({video_id})'
             
             song_data = {
@@ -84,15 +92,14 @@ def get_cached_songs(page=1, per_page=20):
                 'date': datetime.fromtimestamp(file_info['mtime']).strftime('%Y-%m-%d %H:%M:%S'),
                 'timestamp': file_info['mtime']
             }
-            
             downloads.append(song_data)
         
         return downloads, total_files, (total_files + per_page - 1) // per_page
-        
-    except Exception as e:
-        print(f"Error loading songs: {e}")
-        return [], 0, 0
     
+    except Exception as e:
+        logger.error(f"Error loading songs: {e}")
+        return [], 0, 0
+
 @app.route('/')
 def index():
     try:
@@ -119,7 +126,7 @@ def index():
                              total_pages=total_pages,
                              total_files=total_files)
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred in index route: {e}")
         return render_template('index.html',
                              bot_is_online=False,
                              total_servers=0,
@@ -129,16 +136,17 @@ def index():
                              total_files=0)
 
 def run_flask_app():
-    app.run(debug=False,host='0.0.0.0')
+    app.run(debug=False, host='0.0.0.0')
 
+# FIXED: Now checks for both .webm and .mp3 files
 def get_total_songs():
     downloads_dir = './downloads'
     if not os.path.exists(downloads_dir):
         return 0
     try:
-        return len([f for f in os.listdir(downloads_dir) if f.endswith('.webm')])
+        return len([f for f in os.listdir(downloads_dir) if f.endswith(('.webm', '.mp3'))])
     except Exception as e:
-        print(f"Error counting songs: {e}")
+        logger.error(f"Error counting songs: {e}")
         return 0
 
 @app.route('/api/songs')
@@ -147,13 +155,14 @@ def api_songs():
         page = request.args.get('page', 1, type=int)
         per_page = 20
         downloads, total_files, total_pages = get_cached_songs(page, per_page)
+        
         return json.dumps({
             'songs': downloads,
             'total_files': total_files,
             'total_pages': total_pages
         })
     except Exception as e:
-        print(f"API error: {e}")
+        logger.error(f"API error: {e}")
         return json.dumps({
             'songs': [],
             'total_files': 0,
@@ -164,9 +173,14 @@ def api_songs():
 async def run_bot():
     await bot.start(TOKEN)
 
-@tasks.loop(seconds=10)  # Update every 10sec
+@tasks.loop(seconds=10)
 async def update_status():
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{len(bot.voice_contexts)} servers"))
+    await bot.change_presence(
+        activity=discord.Activity(
+            type=discord.ActivityType.listening, 
+            name=f"{len(bot.voice_contexts)} servers"
+        )
+    )
 
 # Register voice events for playlist handlers
 from search.spotifyplaylist import register_voice_events as register_spotify_events
@@ -180,151 +194,146 @@ def register_events():
 # Event listener for when the bot is ready
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user.name}')
-
+    logger.info(f'Logged in as {bot.user.name}')
+    
     # Start the Flask app in a new thread
-    flask_thread = Thread(target=run_flask_app)
+    flask_thread = Thread(target=run_flask_app, daemon=True)
     flask_thread.start()
-
+    
     update_status.start()
-    register_events()  # Register all event handlers when bot is ready
+    register_events()
 
 # Command handling JOIN
-@bot.command(name='join', help='Joins the voice channel')
+@bot.command(name='join', help='Join the voice channel')
 async def joinCommand(ctx):
     try:
         bot.voice_contexts[ctx.guild.id] = ctx
         await join.join_command(ctx)
     except Exception as e:
-        await disconnect.disconnect_command(ctx)
-        bot.voice_contexts.pop(ctx.guild.id, None)
-        bot.voice_contexts[ctx.guild.id] = ctx
-        await join.join_command(ctx)
+        logger.error(f"Error in join command: {e}")
+        await ctx.send("❌ Failed to join voice channel.")
 
 # Command handling PLAY
-@bot.command(name='play', help='Used to play songs')
-async def playCommand(ctx, *args):
+@bot.command(name='play', aliases=['p'], help='Play a song from YouTube or Spotify')
+async def playCommand(ctx, *, query: str = None):
+    if not query:
+        await ctx.send("❌ Please provide a song name or URL!")
+        return
+    
     try:
         bot.voice_contexts[ctx.guild.id] = ctx
-        url = ' '.join(args)
-        await play.play_command(ctx, url)
+        await play.play_command(ctx, query)
     except Exception as e:
-        await disconnect.disconnect_command(ctx)
-        bot.voice_contexts.pop(ctx.guild.id, None)
-        bot.voice_contexts[ctx.guild.id] = ctx
-        url = ' '.join(args)
-        await play.play_command(ctx, url)
+        logger.error(f"Error in play command: {e}")
+        await ctx.send("❌ Failed to play song.")
 
-@bot.command(name='disconnect', help='Disconnects the bot from the voice channel')
-async def disconnectCommand(ctx):
-    await disconnect.disconnect_command(ctx)
-    bot.voice_contexts.pop(ctx.guild.id, None)
-
-@bot.command(name='stop', help='Disconnects the bot from the voice channel')
-async def disconnectCommand(ctx):
-    await disconnect.disconnect_command(ctx)
-    bot.voice_contexts.pop(ctx.guild.id, None)
-
-@bot.command(name='pause', help='Pause the bot while playing')
+@bot.command(name='pause', help='Pause the current song')
 async def pauseCommand(ctx):
     await pause.pause_command(ctx)
 
-@bot.command(name='resume', help='Resume the bot while paused')
+@bot.command(name='resume', help='Resume the paused song')
 async def resumeCommand(ctx):
     await resume.resume_command(ctx)
 
-@bot.command(name='skip')
-async def skip_command(ctx):
-    """Skip the current song and play the next one"""
-    await ytplayer.skip_song(ctx)
+@bot.command(name='skip', aliases=['s', 'next'], help='Skip the current song')
+async def skipCommand(ctx):
+    await skip.skip_command(ctx)
 
-@bot.command(name='shuffle', help='Shuffles your queue')
+@bot.command(name='disconnect', aliases=['dc', 'leave'], help='Disconnect from voice channel')
+async def disconnectCommand(ctx):
+    await disconnect.disconnect_command(ctx)
+    bot.voice_contexts.pop(ctx.guild.id, None)
+
+@bot.command(name='stop', help='Stop playback and disconnect')
+async def stopCommand(ctx):
+    await disconnect.disconnect_command(ctx)
+    bot.voice_contexts.pop(ctx.guild.id, None)
+
+@bot.command(name='shuffle', help='Shuffle the queue')
 async def shuffle_command(ctx):
-    from search.spotifyplaylist import playlist_tracks, shuffle_playlist
-    if ctx.guild.id in playlist_tracks and playlist_tracks[ctx.guild.id]:
-        await shuffle_playlist(ctx)
-    else:
+    from player.queue_manager import queue_manager
+    
+    if queue_manager.get_queue_length(ctx.guild.id) > 0:
         await ytplayer.shuffle_queue(ctx)
+    else:
+        # Check Spotify playlist
+        from search.spotifyplaylist import shuffle_playlist
+        spotify_tracks = queue_manager.get_spotify_playlist_queue(ctx.guild.id)
+        if spotify_tracks:
+            await shuffle_playlist(ctx)
+        else:
+            await ctx.send("❌ No tracks to shuffle.")
 
-@bot.command(name='queue')
+@bot.command(name='queue', aliases=['q'], help='Show the current queue')
 async def queue_command(ctx):
     """Show the current song queue and playlist queues"""
+    from player.queue_manager import queue_manager
     from search.spotifyplaylist import get_playlist_queue as get_spotify_queue
     from search.youtubeplaylist import get_playlist_queue as get_youtube_queue
-    from player import ytplayer
     
-    # Get regular queue
-    queue_text = ""
-    if ctx.guild.id in ytplayer.song_queues and ytplayer.song_queues[ctx.guild.id]:
-        queue_text = "**Current Queue:**\n" + "\n".join([f"{i+1}. {url}" for i, url in enumerate(ytplayer.song_queues[ctx.guild.id])])
-    else:
-        queue_text = "**Current Queue:**\nNo songs in queue."
-
-    # Get Spotify playlist queue with timeout
+    # Get summary
+    summary = queue_manager.get_queue_summary(ctx.guild.id)
+    
+    if not queue_manager.has_any_tracks(ctx.guild.id):
+        await ctx.send("📭 No songs in queue.")
+        return
+    
+    # Build detailed queue message
+    message_parts = [f"**📋 Queue Summary:**\n{summary}\n"]
+    
+    # Show regular queue
+    if queue_manager.get_queue_length(ctx.guild.id) > 0:
+        message_parts.append("**🎵 Current Song Queue:**")
+        queue = queue_manager.get_song_queue(ctx.guild.id)
+        for i, track in enumerate(list(queue)[:10], 1):
+            message_parts.append(f"{i}. {track.title}")
+        if len(queue) > 10:
+            message_parts.append(f"... and {len(queue) - 10} more")
+    
+    # Show Spotify playlist
     try:
-        spotify_queue = await asyncio.wait_for(get_spotify_queue(ctx), timeout=5.0)
-        spotify_text = f"\n\n**Spotify Playlist Queue:**\n{spotify_queue}"
-    except asyncio.TimeoutError:
-        spotify_text = "\n\n**Spotify Playlist Queue:**\nError: Timeout while fetching queue"
-    except Exception as e:
-        # logger.error(f"Error getting Spotify queue: {e}")
-        spotify_text = "\n\n**Spotify Playlist Queue:**\nError: Failed to fetch queue"
-
-    # Get YouTube playlist queue with timeout
+        spotify_queue = await get_spotify_queue(ctx)
+        if "No tracks" not in spotify_queue:
+            message_parts.append(f"\n**Spotify Playlist:**\n{spotify_queue[:500]}...")
+    except:
+        pass
+    
+    # Show YouTube playlist
     try:
-        youtube_queue = await asyncio.wait_for(get_youtube_queue(ctx), timeout=5.0)
-        youtube_text = f"\n\n**YouTube Playlist Queue:**\n{youtube_queue}"
-    except asyncio.TimeoutError:
-        youtube_text = "\n\n**YouTube Playlist Queue:**\nError: Timeout while fetching queue"
-    except Exception as e:
-        # logger.error(f"Error getting YouTube queue: {e}")
-        youtube_text = "\n\n**YouTube Playlist Queue:**\nError: Failed to fetch queue"
-
-    # Combine all queues
-    full_message = queue_text + spotify_text + youtube_text
-
-    # Split message if it's too long
+        youtube_queue = await get_youtube_queue(ctx)
+        if "No tracks" not in youtube_queue:
+            message_parts.append(f"\n**YouTube Playlist:**\n{youtube_queue[:500]}...")
+    except:
+        pass
+    
+    full_message = "\n".join(message_parts)
+    
+    # Split if too long
     if len(full_message) > 1900:
-        parts = []
-        current_part = ""
-        for line in full_message.split('\n'):
-            if len(current_part) + len(line) + 1 > 1900:
-                parts.append(current_part)
-                current_part = line
-            else:
-                current_part += '\n' + line if current_part else line
-        if current_part:
-            parts.append(current_part)
-
+        parts = [full_message[i:i+1900] for i in range(0, len(full_message), 1900)]
         for i, part in enumerate(parts, 1):
-            await ctx.send(f"Queue (Part {i}/{len(parts)}):\n{part}")
+            await ctx.send(f"**Queue (Part {i}/{len(parts)}):**\n{part}")
     else:
         await ctx.send(full_message)
 
 @bot.event
 async def on_voice_state_update(member, before, after):
+    """Handle voice state updates"""
     if member == bot.user and before.channel is not None and after.channel is None:
+        # Bot was disconnected
         guild = before.channel.guild
         guild_id = guild.id
-
-        # Handle the bot being forcibly disconnected
-        if guild_id in ytplayer.song_queues:
-            voice_channel_client = discord.utils.get(bot.voice_clients, guild=guild.name)
-
-            # Clear the queue for the guild
-            del ytplayer.song_queues[guild_id]
-
-            # Optional: Notify users about the disconnection and queue clearance
-            text_channels = guild.text_channels
-            if text_channels:
-                notification_channel = discord.utils.get(text_channels, name=before.channel.name)
-                if notification_channel:
-                    await notification_channel.send("I have been forcibly disconnected, and I will clear queue too.")
-                else:
-                    print(f"force disconnected from {guild.name}")
+        
+        from player.queue_manager import queue_manager
+        queue_manager.clear_all_queues(guild_id)
+        bot.voice_contexts.pop(guild_id, None)
+        
+        logger.info(f"Force disconnected from {guild.name}, cleared all queues")
 
 if __name__ == "__main__":
     try:
         asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        logger.info("Bot shutdown requested by user")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.critical(f"An error occurred: {e}")

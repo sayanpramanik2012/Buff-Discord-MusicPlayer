@@ -1,45 +1,54 @@
-# ytplayer.py
-from collections import deque
+# player/ytplayer.py - FINAL WORKING VERSION
+
 import discord
-from pytubefix import YouTube
 import asyncio
 import yt_dlp as youtube_dl
-from random import shuffle
+from pytubefix import YouTube
 import os
 from functools import lru_cache
 import logging
-from search.spotifyplaylist import playlist_tracks, process_next_track
-from commands import disconnect
+from .queue_manager import queue_manager, Track
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Constants
-AUDIO_SETTINGS = {
+# Constants - FIXED: Different options for files vs streams
+FFMPEG_OPTIONS_FILE = {
+    'options': '-vn'  # For local files - NO before_options
+}
+
+FFMPEG_OPTIONS_STREAM = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -ar 48000 -ac 2 -b:a 192k -af "bass=g=2,treble=g=2,volume=1"'
+    'options': '-vn'  # For streams - WITH before_options
 }
 
 YDL_OPTS = {
-    'format': 'bestaudio[asr=48000]/bestaudio/best',
+    'format': 'bestaudio/best',
     'cookiefile': './cookies.txt',
     'quiet': True,
+    'no_warnings': True,
     'outtmpl': './downloads/%(id)s.%(ext)s',
+    'postprocessors': [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'opus',
+        'preferredquality': '192',
+    }],
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
     },
-    'use_po_token': True,
 }
-
-# Global state
-song_queues = {}
 
 @lru_cache(maxsize=100)
 def get_video_info(video_id):
     """Cache video information to avoid repeated API calls"""
-    with youtube_dl.YoutubeDL(YDL_OPTS) as ydl:
-        return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+    try:
+        with youtube_dl.YoutubeDL(YDL_OPTS) as ydl:
+            return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+    except Exception as e:
+        logger.error(f"Error getting video info: {e}")
+        return None
+
 
 async def download_audio(audio_url, video_id):
     """Download audio file with error handling"""
@@ -48,7 +57,7 @@ async def download_audio(audio_url, video_id):
     if os.path.exists(audio_file):
         logger.info(f"Using cached audio file: {audio_file}")
         return audio_file
-
+    
     try:
         with youtube_dl.YoutubeDL(YDL_OPTS) as ydl:
             info = ydl.extract_info(audio_url, download=True)
@@ -58,6 +67,7 @@ async def download_audio(audio_url, video_id):
     except Exception as e:
         logger.error(f"yt-dlp download failed: {e}")
         raise
+
 
 async def get_audio_stream(audio_url):
     """Get audio stream URL using pytube as fallback"""
@@ -71,51 +81,68 @@ async def get_audio_stream(audio_url):
         logger.error(f"pytube fallback failed: {e}")
         raise
 
-async def on_song_end(ctx):
-    """Handle song end with consistent queue management"""
+
+def check_queue(error, ctx, bot_loop):
+    """Synchronous callback for when audio finishes"""
+    if error:
+        logger.error(f"Playback error in callback: {error}")
+    
+    # Schedule the async function in the bot's event loop
+    coro = play_next_in_queue(ctx)
+    fut = asyncio.run_coroutine_threadsafe(coro, bot_loop)
+    try:
+        fut.result()
+    except Exception as e:
+        logger.error(f"Error in check_queue: {e}")
+
+
+async def play_next_in_queue(ctx):
+    """Play the next song in queue"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
     
     if not voice_client or not voice_client.is_connected():
         return
-
-    # Check regular queue first
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        next_song = song_queues[ctx.guild.id][0]
-        await play_audio(ctx, next_song)
-    else:
-        # Check Spotify playlist
+    
+    # Priority 1: Check regular song queue
+    if queue_manager.get_queue_length(ctx.guild.id) > 0:
+        next_track = queue_manager.peek_next_track(ctx.guild.id)
+        if next_track:
+            await play_audio(ctx, next_track.url)
+            return
+    
+    # Priority 2: Check Spotify playlist queue
+    spotify_tracks = queue_manager.get_spotify_playlist_queue(ctx.guild.id)
+    if spotify_tracks:
         try:
-            from search.spotifyplaylist import playlist_tracks as spotify_tracks
-            from search.spotifyplaylist import process_next_track as process_spotify_track
-            if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
-                await process_spotify_track(ctx)
-                return
+            from search.spotifyplaylist import process_next_track as process_spotify
+            await process_spotify(ctx)
+            return
         except Exception as e:
             logger.error(f"Error processing Spotify playlist: {e}")
-
-        # Check YouTube playlist
+    
+    # Priority 3: Check YouTube playlist queue
+    youtube_tracks = queue_manager.get_youtube_playlist_queue(ctx.guild.id)
+    if youtube_tracks:
         try:
-            from search.youtubeplaylist import playlist_tracks as youtube_tracks
-            from search.youtubeplaylist import process_next_track as process_youtube_track
-            if ctx.guild.id in youtube_tracks and youtube_tracks[ctx.guild.id]:
-                await process_youtube_track(ctx)
-                return
+            from search.youtubeplaylist import process_next_track as process_youtube
+            await process_youtube(ctx)
+            return
         except Exception as e:
             logger.error(f"Error processing YouTube playlist: {e}")
+    
+    # No more tracks - disconnect
+    await ctx.send("🔇 Queue is empty. Disconnecting...")
+    await disconnect_and_clear_queue(ctx)
 
-        # Final fallback if no tracks found
-        await ctx.send("Queue is empty. Disconnecting...")
-        await disconnect_and_clear_queue(ctx)
-        if voice_client.is_connected():
-            await voice_client.disconnect()
-            
+
 async def play_audio(ctx, audio_url):
-    """Play audio with improved error handling and resource management"""
+    """Play audio with improved error handling"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    
     if not voice_client or not voice_client.is_connected():
         logger.warning("Cannot play audio: Bot is not in voice channel")
         return
-
+    
     # Extract video ID and get info
     try:
         with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
@@ -124,90 +151,129 @@ async def play_audio(ctx, audio_url):
             title = info.get('title', audio_url)
     except Exception as e:
         logger.error(f"Info extraction failed: {e}")
-        await ctx.send(f"Error retrieving video info: {e}")
+        await ctx.send(f"❌ Error retrieving video info")
+        await play_next_in_queue(ctx)
         return
-
-    # Ensure queue exists and pop current song
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        current_song = song_queues[ctx.guild.id].popleft()  # Actual pop happens here
-        await ctx.send(f"Now playing: **{title}**")
-
+    
+    await ctx.send(f"🎵 Now playing: **{title}**")
+    
+    # Try to get audio source
+    audio_source = None
+    is_file = False  # Track if we're using a file or stream
+    
     try:
         # Try downloading with yt-dlp first
         audio_file = await download_audio(audio_url, video_id)
-        audio_source = await discord.FFmpegOpusAudio.from_probe(audio_file)
+        # FIXED: Use FFMPEG_OPTIONS_FILE for local files (no before_options)
+        audio_source = discord.FFmpegOpusAudio(audio_file, **FFMPEG_OPTIONS_FILE)
+        is_file = True
+        logger.info(f"Created audio source from file: {audio_file}")
+        
     except Exception as e:
-        logger.warning(f"yt-dlp failed, falling back to pytube: {e}")
+        logger.warning(f"yt-dlp failed, falling back to pytube stream: {e}")
         try:
             audio_stream_url = await get_audio_stream(audio_url)
-            audio_source = discord.FFmpegPCMAudio(audio_stream_url, **AUDIO_SETTINGS)
+            # FIXED: Use FFMPEG_OPTIONS_STREAM for streams (with before_options)
+            audio_source = discord.FFmpegOpusAudio(audio_stream_url, **FFMPEG_OPTIONS_STREAM)
+            is_file = False
+            logger.info(f"Created audio source from stream")
         except Exception as fallback_error:
             logger.error(f"All audio source methods failed: {fallback_error}")
-            await ctx.send("❌ All audio retrieval methods failed")
+            await ctx.send("❌ Failed to get audio source. Skipping...")
+            await play_next_in_queue(ctx)
             return
-
+    
+    # Pop from queue AFTER creating audio source successfully
+    if queue_manager.get_queue_length(ctx.guild.id) > 0:
+        popped_track = queue_manager.pop_next_track(ctx.guild.id)
+        logger.info(f"Playing track: {popped_track.title}")
+    
+    # Play with callback
     try:
         voice_client.play(
             audio_source,
-            after=lambda e: asyncio.run_coroutine_threadsafe(
-                on_song_end(ctx), ctx.bot.loop
-            ) if not e else None
+            after=lambda e: check_queue(e, ctx, ctx.bot.loop)
         )
+        logger.info(f"Started playback for: {title} (source: {'file' if is_file else 'stream'})")
     except Exception as play_error:
-        logger.error(f"Playback failed: {play_error}")
-        await ctx.send(f"❌ Playback error: {play_error}")
+        logger.error(f"voice_client.play() failed: {play_error}")
+        await ctx.send(f"❌ Playback error")
+        await play_next_in_queue(ctx)
+
 
 async def enqueue_song(ctx, audio_url, from_playlist=False):
-    """Enqueue song with improved state management"""
+    """Enqueue song using unified queue manager"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    
     if not voice_client or not voice_client.is_connected():
         logger.warning("Cannot enqueue song: Bot is not in voice channel")
         return
-
-    if ctx.guild.id not in song_queues:
-        song_queues[ctx.guild.id] = deque()
-
-    song_queues[ctx.guild.id].append(audio_url)
     
+    # Create track object
+    try:
+        with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
+            info = ydl.extract_info(audio_url, download=False)
+            title = info.get('title', 'Unknown')
+    except:
+        title = audio_url
+    
+    track = Track(
+        url=audio_url,
+        title=title,
+        source='youtube',
+        requester_id=ctx.author.id
+    )
+    
+    # Add to queue
+    queue_manager.add_track(ctx.guild.id, track)
+    
+    # Notify user if not from playlist
     if not from_playlist:
         if voice_client.is_playing() or voice_client.is_paused():
-            await ctx.send(f"Added to queue: {audio_url}")
-        if voice_client.is_paused():
-            await ctx.send("Currently paused. Use `resume` to continue.")
-
-    # Only start playing if nothing is playing
+            position = queue_manager.get_queue_length(ctx.guild.id)
+            await ctx.send(f"✅ Added to queue (Position: {position}): **{title}**")
+            if voice_client.is_paused():
+                await ctx.send("⏸️ Currently paused. Use `=resume` to continue.")
+    
+    # Start playing if nothing is playing
     if not voice_client.is_playing() and not voice_client.is_paused():
         await play_audio(ctx, audio_url)
 
+
 async def disconnect_and_clear_queue(ctx):
-    """Disconnect and clear queue with improved cleanup"""
+    """Disconnect and clear all queues"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    
     if voice_client and voice_client.is_connected():
         await voice_client.disconnect()
-    if ctx.guild.id in song_queues:
-        del song_queues[ctx.guild.id]
-    logger.info(f"Disconnected and cleared queue for Guild ID: {ctx.guild.id}")
+    
+    queue_manager.clear_all_queues(ctx.guild.id)
+    logger.info(f"Disconnected and cleared all queues for Guild ID: {ctx.guild.id}")
+
 
 async def shuffle_queue(ctx):
-    """Shuffle queue with improved error handling"""
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        queue = list(song_queues[ctx.guild.id])
-        shuffle(queue)
-        song_queues[ctx.guild.id] = deque(queue)
-        await ctx.send("Queue shuffled successfully!")
+    """Shuffle the song queue"""
+    if queue_manager.get_queue_length(ctx.guild.id) > 0:
+        queue_manager.shuffle_song_queue(ctx.guild.id)
+        await ctx.send("🔀 Queue shuffled successfully!")
     else:
-        await ctx.send("No songs in the queue to shuffle.")
+        await ctx.send("❌ No songs in the queue to shuffle.")
+
 
 async def skip_song(ctx):
-    """Skip the current song and play the next one in the queue"""
+    """Skip the current song"""
     voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    
     if not voice_client or not voice_client.is_connected():
-        await ctx.send("I'm not playing anything right now.")
+        await ctx.send("❌ I'm not playing anything right now.")
         return
-
-    # Stop current playback (triggers after callback)
+    
     if voice_client.is_playing():
         voice_client.stop()
+        await ctx.send("⏭️ Skipped!")
     elif voice_client.is_paused():
         voice_client.resume()
         voice_client.stop()
+        await ctx.send("⏭️ Skipped!")
+    else:
+        await ctx.send("❌ Nothing is playing.")

@@ -1,19 +1,18 @@
-# disconnect.py
+# commands/disconnect.py
 import discord
 from player import ytplayer
+import logging
+
+logger = logging.getLogger(__name__)
 
 async def disconnect_command(ctx):
+    """Disconnect from voice channel and clear queue"""
     voice_channel_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+    
     if voice_channel_client:
-        await ctx.send("I am disconnected.")
+        # Clear queue and disconnect
         await ytplayer.disconnect_and_clear_queue(ctx)
-        # Stop playing and disconnect from the voice channel
-        voice_channel_client.stop()
-        await voice_channel_client.disconnect()
-
-        # Set any other state variables to initial values if needed
-        # For example, you might want to reset a queue or clear any active states
-
-        
+        await ctx.send("👋 Disconnected and cleared queue.")
+        logger.info(f"Disconnected from voice in guild {ctx.guild.id}")
     else:
-        await ctx.send("I am not in a voice channel.")
+        await ctx.send("❌ I'm not in a voice channel.")
