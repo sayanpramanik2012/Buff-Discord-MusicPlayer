@@ -19,8 +19,7 @@
 
     <span class="nav-label" style="margin-top:8px;">Servers</span>
 
-    {% for g in (session.get('guilds', []) | selectattr('bot_present', 'defined'))[:8] %}
-      {% if g.bot_present %}
+    {% for g in sidebar_guilds %}
       <a href="/servers/{{ g.id }}" class="nav-link {% if request.path == '/servers/' + g.id %}active{% endif %}"
          style="padding-left:8px;">
         {% if g.icon_url %}
@@ -30,7 +29,6 @@
         {% endif %}
         <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ g.name }}</span>
       </a>
-      {% endif %}
     {% endfor %}
 
     {% if current_user.is_admin %}

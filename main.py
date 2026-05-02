@@ -42,7 +42,9 @@ bot = commands.Bot(
 @bot.event
 async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
-    db.init_db()
+    # Clear any stale slash commands registered by older bot versions
+    synced = await bot.tree.sync()
+    logger.info("Synced %d application commands", len(synced))
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.listening,

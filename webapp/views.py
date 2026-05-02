@@ -12,6 +12,23 @@ import config
 main_bp = Blueprint("main", __name__, template_folder="../templates/webapp")
 
 
+# ── Context processor — injects sidebar_guilds into every template ────────────
+
+@main_bp.app_context_processor
+def inject_sidebar_data():
+    """
+    Runs before every response. Provides `sidebar_guilds` — enriched, bot-present
+    guilds from session — so _sidebar.html doesn't need to call _enrich_guilds itself.
+    """
+    from flask_login import current_user as cu
+    if cu.is_authenticated:
+        raw = session.get("guilds", [])
+        enriched = _enrich_guilds(raw)
+        bot_guilds = [g for g in enriched if g.get("bot_present")][:8]
+        return {"sidebar_guilds": bot_guilds}
+    return {"sidebar_guilds": []}
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _bot_guild_ids():
