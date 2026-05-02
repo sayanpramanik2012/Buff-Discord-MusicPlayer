@@ -69,7 +69,9 @@ async def enqueue_and_play(
     if already_playing:
         pos = queue_manager.size(guild_id)
         if text_channel:
-            await text_channel.send(f"📋 **Queued** (#{pos}): {track.display_title}")
+            await text_channel.send(
+                f"Added to the queue at position **#{pos}**: {track.display_title} 🎶"
+            )
     else:
         await _advance(voice_client, guild_id, text_channel)
 
@@ -107,7 +109,10 @@ async def _advance(
     if track is None:
         _current.pop(guild_id, None)
         if text_channel:
-            await text_channel.send("✅ Queue finished. Goodbye! 👋")
+            await text_channel.send(
+                "That's all the songs in the queue! "
+                "It was fun playing for you — see you next time! 👋"
+            )
         await voice_client.disconnect()
         return
 
@@ -150,7 +155,8 @@ async def _play_track(
             logger.warning("No info returned for track: %s", track.display_title)
             if text_channel:
                 await text_channel.send(
-                    f"⚠️ Couldn't fetch stream for **{track.display_title}** — skipping."
+                    f"Hmm, I couldn't get the stream for **{track.display_title}** — "
+                    "not sure what happened there. I'll skip it and move on! ⏭"
                 )
             await _advance(voice_client, guild_id, text_channel)
             return
@@ -170,7 +176,9 @@ async def _play_track(
             logger.error("No stream URL in yt-dlp response for '%s'", track.display_title)
             if text_channel:
                 await text_channel.send(
-                    f"⚠️ No playable stream for **{track.display_title}** — skipping."
+                    f"Looks like **{track.display_title}** isn't playable right now — "
+                    "it might be age-restricted or unavailable in this region. "
+                    "I'll skip it and try the next one! ⏭"
                 )
             await _advance(voice_client, guild_id, text_channel)
             return
@@ -219,16 +227,19 @@ async def _play_track(
     except Exception as exc:
         logger.error("Exception in _play_track for '%s': %s", track.display_title, exc, exc_info=True)
         if text_channel:
-            await text_channel.send(f"❌ Error playing **{track.display_title}**: `{exc}`")
+            await text_channel.send(
+                f"Oops! Something went wrong while trying to play **{track.display_title}**. "
+                f"I'll skip it for now and keep going! (`{exc}`)"
+            )
         await _advance(voice_client, guild_id, text_channel)
 
 
 def _now_playing_msg(track: Track, guild_id: int) -> str:
     dur = _fmt_duration(track.duration)
     q = queue_manager.size(guild_id)
-    q_info = f" · **{q} in queue**" if q else ""
+    q_info = f" · {q} more track{'s' if q != 1 else ''} in queue" if q else ""
     icon = "🎧" if track.source == TrackSource.SPOTIFY else "▶️"
-    return f"{icon} **Now Playing:** {track.display_title}{dur}{q_info}"
+    return f"{icon} Now playing: **{track.display_title}**{dur}{q_info}"
 
 
 def _fmt_duration(seconds: Optional[int]) -> str:

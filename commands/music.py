@@ -57,7 +57,9 @@ class Music(commands.Cog, name="Music"):
     async def _ensure_voice(self, ctx: commands.Context) -> bool:
         """Join the caller's voice channel. Returns False and sends an error if unable."""
         if not ctx.author.voice or not ctx.author.voice.channel:
-            await ctx.send("❌ You need to be in a voice channel first.")
+            await ctx.send(
+                "Hey! You need to be in a voice channel first so I know where to join 🎵"
+            )
             return False
 
         channel = ctx.author.voice.channel
@@ -69,10 +71,16 @@ class Music(commands.Cog, name="Music"):
             try:
                 await channel.connect(self_deaf=True)
             except discord.ClientException as exc:
-                await ctx.send(f"❌ Could not connect to voice: `{exc}`")
+                await ctx.send(
+                    f"Hmm, I couldn't connect to that channel. "
+                    f"Here's what went wrong: `{exc}`"
+                )
                 return False
             except asyncio.TimeoutError:
-                await ctx.send("❌ Timed out while connecting to voice channel.")
+                await ctx.send(
+                    "I tried to join but it took too long — the channel might be full "
+                    "or I may not have permission. Could you try again?"
+                )
                 return False
 
         return True
@@ -83,7 +91,9 @@ class Music(commands.Cog, name="Music"):
     async def join(self, ctx: commands.Context):
         """Join your current voice channel."""
         if await self._ensure_voice(ctx):
-            await ctx.send(f"✅ Joined **{ctx.author.voice.channel.name}**")
+            await ctx.send(
+                f"I'm in! 🎉 Joined **{ctx.author.voice.channel.name}** and ready to play!"
+            )
 
     # ------------------------------------------------------------------
     @commands.command(name="play", aliases=["p"])
@@ -114,8 +124,9 @@ class Music(commands.Cog, name="Music"):
                     info = get_track_info(query)
                 if not info:
                     await ctx.send(
-                        "❌ Could not fetch Spotify track info.\n"
-                        "Make sure `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set."
+                        "I couldn't grab that Spotify track info — my Spotify credentials "
+                        "might not be configured. Make sure `SPOTIFY_CLIENT_ID` and "
+                        "`SPOTIFY_CLIENT_SECRET` are set in your `.env` file!"
                     )
                     return
                 track = Track(
@@ -125,7 +136,9 @@ class Music(commands.Cog, name="Music"):
                     source=TrackSource.SPOTIFY,
                     requester_id=ctx.author.id,
                 )
-                await ctx.send(f"🔍 Searching YouTube for: **{info['search_query']}**")
+                await ctx.send(
+                    f"Got it! 🎧 I'm searching YouTube for **{info['search_query']}**..."
+                )
                 await enqueue_and_play(vc, gid, track, ch)
 
             elif sp_type in ("playlist", "album"):
@@ -137,15 +150,16 @@ class Music(commands.Cog, name="Music"):
                     )
                 if not raw:
                     await ctx.send(
-                        f"❌ Could not fetch Spotify {sp_type} tracks.\n"
-                        "Make sure your Spotify credentials are set."
+                        f"I couldn't load that Spotify {sp_type} — my Spotify credentials "
+                        "might not be set up. Check `SPOTIFY_CLIENT_ID` and "
+                        "`SPOTIFY_CLIENT_SECRET` in your `.env` file!"
                     )
                     return
 
                 raw = raw[:_MAX_PLAYLIST]
                 await ctx.send(
-                    f"📋 Loaded **{len(raw)}** tracks from Spotify {sp_type}. "
-                    "Searching YouTube for each…"
+                    f"Nice! 🎶 I found **{len(raw)}** tracks in that Spotify {sp_type}. "
+                    "Give me a moment while I search YouTube for each one!"
                 )
 
                 tracks = [
@@ -158,16 +172,21 @@ class Music(commands.Cog, name="Music"):
                     )
                     for t in raw
                 ]
-                # Enqueue first; if nothing is playing it starts immediately.
-                # The rest are bulk-appended so no per-track "queued" messages flood chat.
+                # Start the first track; bulk-add the rest to avoid chat spam.
                 first, *rest = tracks
                 await enqueue_and_play(vc, gid, first, ch)
                 if rest:
                     queue_manager.add_many(gid, rest)
-                    await ctx.send(f"📋 Added **{len(rest)}** more tracks to queue.")
+                    await ctx.send(
+                        f"I've lined up **{len(rest)}** more tracks in the queue for you! 🎶"
+                    )
 
             else:
-                await ctx.send("❌ Unsupported Spotify link type.")
+                await ctx.send(
+                    "Hmm, I'm not sure what to do with that Spotify link. "
+                    "I can handle **tracks**, **playlists**, and **albums** — "
+                    "could you try one of those?"
+                )
             return
 
         # ── YouTube playlist ──────────────────────────────────────────────────
@@ -175,11 +194,17 @@ class Music(commands.Cog, name="Music"):
             async with ctx.typing():
                 entries = await yt_get_playlist(query)
             if not entries:
-                await ctx.send("❌ Could not load YouTube playlist (empty or private?).")
+                await ctx.send(
+                    "I couldn't load that YouTube playlist — it might be private, empty, "
+                    "or the link could be wrong. Could you double-check and try again?"
+                )
                 return
 
             entries = entries[:_MAX_PLAYLIST]
-            await ctx.send(f"📋 Loading **{len(entries)}** tracks from YouTube playlist…")
+            await ctx.send(
+                f"I found **{len(entries)}** tracks in that playlist! "
+                "Loading them up now... 🎵"
+            )
 
             tracks = [
                 Track(
@@ -195,7 +220,9 @@ class Music(commands.Cog, name="Music"):
             await enqueue_and_play(vc, gid, first, ch)
             if rest:
                 queue_manager.add_many(gid, rest)
-                await ctx.send(f"📋 Added **{len(rest)}** more tracks to queue.")
+                await ctx.send(
+                    f"I've added **{len(rest)}** more tracks to the queue! 🎶"
+                )
             return
 
         # ── YouTube URL or plain search ───────────────────────────────────────
@@ -203,7 +230,10 @@ class Music(commands.Cog, name="Music"):
             info = await yt_search(query)
 
         if not info:
-            await ctx.send(f"❌ No results found for: `{query}`")
+            await ctx.send(
+                f"I searched everywhere but couldn't find anything for **{query}**. "
+                "Maybe try a different search term or paste a direct URL?"
+            )
             return
 
         track = Track(
@@ -223,10 +253,10 @@ class Music(commands.Cog, name="Music"):
         """Pause the current song."""
         vc = ctx.voice_client
         if not vc or not vc.is_playing():
-            await ctx.send("❌ Nothing is playing right now.")
+            await ctx.send("There's nothing playing right now for me to pause!")
             return
         vc.pause()
-        await ctx.send("⏸ Paused.")
+        await ctx.send("Music paused! ⏸ Use `resume` whenever you're ready to continue.")
 
     # ------------------------------------------------------------------
     @commands.command(name="resume", aliases=["r"])
@@ -234,10 +264,10 @@ class Music(commands.Cog, name="Music"):
         """Resume a paused song."""
         vc = ctx.voice_client
         if not vc or not vc.is_paused():
-            await ctx.send("❌ Nothing is paused.")
+            await ctx.send("Nothing is paused right now — the music is already going! ▶️")
             return
         vc.resume()
-        await ctx.send("▶️ Resumed.")
+        await ctx.send("Music is back on! ▶️ Enjoy!")
 
     # ------------------------------------------------------------------
     @commands.command(name="skip", aliases=["s", "next"])
@@ -245,12 +275,12 @@ class Music(commands.Cog, name="Music"):
         """Skip the current song."""
         vc = ctx.voice_client
         if not vc:
-            await ctx.send("❌ I'm not in a voice channel.")
+            await ctx.send("I'm not in a voice channel right now!")
             return
         if await skip_current(vc):
-            await ctx.send("⏭ Skipped.")
+            await ctx.send("Got it! ⏭ I'll play the next song now...")
         else:
-            await ctx.send("❌ Nothing is playing.")
+            await ctx.send("There's nothing playing right now to skip!")
 
     # ------------------------------------------------------------------
     @commands.command(name="nowplaying", aliases=["np", "current"])
@@ -258,7 +288,9 @@ class Music(commands.Cog, name="Music"):
         """Show what's currently playing."""
         track = get_current_track(ctx.guild.id)
         if not track:
-            await ctx.send("❌ Nothing is playing right now.")
+            await ctx.send(
+                "I'm not playing anything at the moment — use `play` to start something! 🎵"
+            )
             return
 
         dur = _fmt_duration(track.duration)
@@ -270,7 +302,7 @@ class Music(commands.Cog, name="Music"):
             description=f"**{track.display_title}**{dur}",
             color=0x1DB954 if track.source == TrackSource.SPOTIFY else 0xFF0000,
         )
-        embed.set_footer(text=f"Source: {source_label} · Requested by someone in this server")
+        embed.set_footer(text=f"Streaming from {source_label}")
         if track.thumbnail:
             embed.set_thumbnail(url=track.thumbnail)
 
@@ -290,16 +322,18 @@ class Music(commands.Cog, name="Music"):
             lines.append(f"▶️ **Now Playing:** {current.display_title}{dur}")
 
         if upcoming:
-            lines.append(f"\n📋 **Queue — {len(upcoming)} track(s):**")
+            lines.append(f"\n📋 **Coming up — {len(upcoming)} track(s):**")
             for i, t in enumerate(upcoming[:15], 1):
                 dur = _fmt_duration(t.duration)
                 lines.append(f"`{i}.` {t.display_title}{dur}")
             if len(upcoming) > 15:
-                lines.append(f"*… and {len(upcoming) - 15} more*")
+                lines.append(f"*… and {len(upcoming) - 15} more tracks waiting!*")
         elif not current:
-            lines.append("📭 The queue is empty.")
+            lines.append(
+                "The queue is empty right now! Add some songs with `play` 🎵"
+            )
 
-        await ctx.send("\n".join(lines) if lines else "📭 Nothing playing.")
+        await ctx.send("\n".join(lines) if lines else "The queue is empty — let's add some music! 🎵")
 
     # ------------------------------------------------------------------
     @commands.command(name="shuffle")
@@ -307,10 +341,15 @@ class Music(commands.Cog, name="Music"):
         """Shuffle the upcoming queue."""
         gid = ctx.guild.id
         if queue_manager.is_empty(gid):
-            await ctx.send("❌ The queue is empty — nothing to shuffle.")
+            await ctx.send(
+                "The queue is empty right now — add some songs first and then I can shuffle them! 🎲"
+            )
             return
         queue_manager.shuffle(gid)
-        await ctx.send(f"🔀 Shuffled **{queue_manager.size(gid)}** tracks.")
+        await ctx.send(
+            f"Done! 🔀 I've shuffled **{queue_manager.size(gid)}** tracks — "
+            "let's see what comes up next!"
+        )
 
     # ------------------------------------------------------------------
     @commands.command(name="disconnect", aliases=["dc", "leave", "stop"])
@@ -318,10 +357,13 @@ class Music(commands.Cog, name="Music"):
         """Stop playback, clear the queue, and disconnect."""
         vc = ctx.voice_client
         if not vc:
-            await ctx.send("❌ I'm not in a voice channel.")
+            await ctx.send("I'm not in a voice channel right now!")
             return
         await stop_all(vc, ctx.guild.id)
-        await ctx.send("👋 Disconnected and cleared the queue.")
+        await ctx.send(
+            "Alright, I'm heading out! 👋 Queue cleared and disconnected. "
+            "Come back whenever you want more music!"
+        )
 
     # ------------------------------------------------------------------
     @commands.command(name="remove")
@@ -330,13 +372,16 @@ class Music(commands.Cog, name="Music"):
         gid = ctx.guild.id
         tracks = queue_manager.list_tracks(gid)
         if not tracks:
-            await ctx.send("❌ The queue is empty.")
+            await ctx.send("The queue is empty — there's nothing for me to remove!")
             return
         if position < 1 or position > len(tracks):
-            await ctx.send(f"❌ Position must be between 1 and {len(tracks)}.")
+            await ctx.send(
+                f"Hmm, I only have tracks at positions **1 to {len(tracks)}**. "
+                "Try one of those!"
+            )
             return
         removed = queue_manager._q(gid).pop(position - 1)
-        await ctx.send(f"🗑 Removed: **{removed.display_title}**")
+        await ctx.send(f"Done! I've removed **{removed.display_title}** from the queue. 🗑")
 
     # ─── Auto-disconnect when left alone ──────────────────────────────────────
 

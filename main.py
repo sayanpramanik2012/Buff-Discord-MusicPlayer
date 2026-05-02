@@ -45,14 +45,20 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx: commands.Context, error):
     if isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing argument: `{error.param.name}`")
+        await ctx.send(
+            f"Looks like you forgot something! I need `{error.param.name}` to run that command. "
+            f"Try `{config.PREFIX}help {ctx.command}` to see how to use it."
+        )
     elif isinstance(error, commands.CommandNotFound):
         pass  # silently ignore unknown commands
     elif isinstance(error, commands.NoPrivateMessage):
-        await ctx.send("❌ This command only works inside a server.")
+        await ctx.send("This command only works inside a server — I can't do that in DMs!")
     elif isinstance(error, commands.CommandInvokeError):
         logger.error("Command %s raised: %s", ctx.command, error.original, exc_info=error.original)
-        await ctx.send(f"❌ An unexpected error occurred: `{error.original}`")
+        await ctx.send(
+            f"Oops! Something went wrong while running that command. "
+            f"Here's the details: `{error.original}`"
+        )
     else:
         logger.warning("Unhandled command error: %s", error)
 
