@@ -21,7 +21,18 @@ _YT_PLAYLIST_RE = re.compile(
 )
 
 # ─── yt-dlp configs ───────────────────────────────────────────────────────────
+
+# For text searches: flat extraction of 5 candidates (fast — no stream URL needed)
 _SEARCH_OPTS: Dict[str, Any] = {
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": False,          # must be False to get all 5 search entries
+    "extract_flat": "in_playlist",
+    "source_address": "0.0.0.0",
+}
+
+# For direct YouTube URLs: full metadata (title, duration, thumbnail)
+_DIRECT_OPTS: Dict[str, Any] = {
     "format": "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
     "quiet": True,
     "no_warnings": True,
@@ -39,10 +50,29 @@ _SEARCH_OPTS: Dict[str, Any] = {
 _PLAYLIST_OPTS: Dict[str, Any] = {
     "quiet": True,
     "no_warnings": True,
-    "extract_flat": True,   # fast: only fetch IDs/titles, no stream URLs
+    "extract_flat": True,
     "noplaylist": False,
     "source_address": "0.0.0.0",
 }
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _is_short(entry: Dict[str, Any]) -> bool:
+    """True if the entry is a YouTube Short or too short to be a real song."""
+    url = (
+        entry.get("url") or
+        entry.get("webpage_url") or
+        entry.get("original_url") or
+        f"https://www.youtube.com/watch?v={entry.get('id', '')}"
+    )
+    if "/shorts/" in url:
+        return True
+    duration = entry.get("duration") or 0
+    # Anything under 60 seconds is almost certainly a Short or ad clip
+    if 0 < duration < 60:
+        return True
+    return False
 
 
 # ─── Public helpers ───────────────────────────────────────────────────────────
@@ -59,32 +89,57 @@ def is_youtube_playlist_url(query: str) -> bool:
 async def search(query: str) -> Optional[Dict[str, Any]]:
     """
     Resolve a search term or YouTube URL to a single yt-dlp info dict.
-    Returns keys including: id, title, uploader/channel, duration, thumbnail.
-    Callers should store  https://youtube.com/watch?v={info['id']}  as the
+    For text searches, fetches 5 candidates and skips YouTube Shorts / clips
+    under 60 seconds to maximise the chance of returning an actual song.
+
+    Callers should store https://youtube.com/watch?v={info['id']} as the
     permanent track URL — stream URLs inside info expire in ~6 hours.
     """
     loop = asyncio.get_running_loop()
-    term = query if is_youtube_url(query) else f"ytsearch1:{query}"
 
-    def _run() -> Optional[Dict[str, Any]]:
+    if is_youtube_url(query):
+        # Direct URL — return full info (no filtering; user explicitly chose this)
+        def _run_direct() -> Optional[Dict[str, Any]]:
+            with yt_dlp.YoutubeDL(_DIRECT_OPTS) as ydl:
+                try:
+                    return ydl.extract_info(query, download=False)
+                except Exception as exc:
+                    logger.error("YouTube direct URL error for '%s': %s", query, exc)
+                    return None
+
+        return await loop.run_in_executor(None, _run_direct)
+
+    # Text search — fetch 5 candidates, skip Shorts, return first good result
+    def _run_search() -> Optional[Dict[str, Any]]:
         with yt_dlp.YoutubeDL(_SEARCH_OPTS) as ydl:
             try:
-                info = ydl.extract_info(term, download=False)
-                if info and "entries" in info:
-                    entries = [e for e in info["entries"] if e]
-                    info = entries[0] if entries else None
-                return info
+                info = ydl.extract_info(f"ytsearch5:{query}", download=False)
+                if not info or "entries" not in info:
+                    return None
+                entries = [e for e in info["entries"] if e and e.get("id")]
+                if not entries:
+                    return None
+                # Prefer first non-Short result
+                for entry in entries:
+                    if not _is_short(entry):
+                        return entry
+                # All 5 were Shorts — return first anyway as last resort
+                logger.warning(
+                    "All 5 search results for '%s' were Shorts; returning first", query
+                )
+                return entries[0]
             except Exception as exc:
                 logger.error("YouTube search error for '%s': %s", query, exc)
                 return None
 
-    return await loop.run_in_executor(None, _run)
+    return await loop.run_in_executor(None, _run_search)
 
 
 async def get_playlist(playlist_url: str) -> List[Dict[str, Any]]:
     """
     Return [{url, title, duration}, ...] for every video in a YouTube playlist.
     Uses extract_flat so it is fast even for large playlists.
+    Skips Shorts automatically.
     """
     loop = asyncio.get_running_loop()
 
@@ -94,15 +149,18 @@ async def get_playlist(playlist_url: str) -> List[Dict[str, Any]]:
                 info = ydl.extract_info(playlist_url, download=False)
                 if not info or "entries" not in info:
                     return []
-                return [
-                    {
+                results = []
+                for e in info["entries"]:
+                    if not e or not e.get("id"):
+                        continue
+                    if _is_short(e):
+                        continue
+                    results.append({
                         "url": f"https://www.youtube.com/watch?v={e['id']}",
                         "title": e.get("title") or "Unknown",
                         "duration": e.get("duration"),
-                    }
-                    for e in info["entries"]
-                    if e and e.get("id")
-                ]
+                    })
+                return results
             except Exception as exc:
                 logger.error("YouTube playlist error for '%s': %s", playlist_url, exc)
                 return []

@@ -12,7 +12,7 @@ DB_PATH = Path("./data/buff.db")
 
 # ── Plan limits ───────────────────────────────────────────────────────────────
 PLAN_SERVER_LIMITS = {"free": 0, "pro": 2, "max": 10}
-PLAN_QUEUE_LIMITS  = {"free": 50, "pro": 200, "max": 0}  # 0 = unlimited
+PLAN_QUEUE_LIMITS  = {"free": 50, "pro": 200, "max": 5000}
 
 
 # ── Connection factory ────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ _DEFAULTS: Dict[str, Any] = {
     "prefix": "#",
     "dj_role_id": None,
     "volume": 100,
-    "max_queue_length": 50,
+    "max_queue_length": 5000,  # plan limit enforced on top; default = plan's full allowance
     "auto_disconnect": 1,
     "announce_songs": 1,
 }

@@ -67,12 +67,12 @@
                 Max Queue Length &nbsp;<span id="ql-label" style="color:var(--accent);">{{ settings.max_queue_length or 50 }} tracks</span>
               </label>
               <input type="range" class="form-control" id="max_queue_length" name="max_queue_length"
-                     min="5" max="{% if plan == 'max' %}500{% elif plan == 'pro' %}200{% else %}50{% endif %}"
+                     min="5" max="{% if plan == 'max' %}5000{% elif plan == 'pro' %}200{% else %}50{% endif %}"
                      value="{{ settings.max_queue_length or 50 }}">
               <div class="form-hint">
                 {% if plan == 'free' %}Free plan: max 50 tracks. <a href="/plans">Upgrade</a> for more.
                 {% elif plan == 'pro' %}Pro plan: up to 200 tracks.
-                {% else %}Max plan: up to 500 tracks.
+                {% else %}Max plan: up to 5,000 tracks.
                 {% endif %}
               </div>
             </div>

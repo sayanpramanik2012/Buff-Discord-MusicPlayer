@@ -71,14 +71,12 @@ async def enqueue_and_play(
     already_playing = voice_client.is_playing() or voice_client.is_paused()
 
     if already_playing:
-        # Enforce queue length: respect both plan cap and server-configured limit.
-        plan          = db.get_guild_plan(str(guild_id))
-        plan_limit    = db.PLAN_QUEUE_LIMITS.get(plan, 50)  # 0 = unlimited (Max)
-        settings      = db.get_guild_settings(str(guild_id))
-        settings_limit = settings.get("max_queue_length", 50)
-
-        # Effective limit = lower of plan cap and server setting (plan=0 means skip plan cap)
-        effective_limit = min(plan_limit, settings_limit) if plan_limit > 0 else settings_limit
+        # Enforce queue length: lower of plan cap and server-configured limit.
+        plan           = db.get_guild_plan(str(guild_id))
+        plan_limit     = db.PLAN_QUEUE_LIMITS.get(plan, 50)
+        settings       = db.get_guild_settings(str(guild_id))
+        settings_limit = settings.get("max_queue_length", plan_limit)
+        effective_limit = min(plan_limit, settings_limit)
 
         if queue_manager.size(guild_id) >= effective_limit:
             if text_channel:
@@ -155,7 +153,18 @@ async def _fetch_info(url: str, guild_id: int) -> Optional[Dict[str, Any]]:
                 info = ydl.extract_info(url, download=False)
                 if info and "entries" in info:
                     entries = [e for e in info["entries"] if e]
-                    info = entries[0] if entries else None
+                    # Prefer non-Short, song-length results
+                    for entry in entries:
+                        entry_url = entry.get("url") or entry.get("webpage_url") or ""
+                        entry_dur = entry.get("duration") or 0
+                        if "/shorts/" in entry_url:
+                            continue
+                        if 0 < entry_dur < 60:
+                            continue
+                        info = entry
+                        break
+                    else:
+                        info = entries[0] if entries else None
                 return info
             except yt_dlp.utils.DownloadError as exc:
                 logger.error("yt-dlp DownloadError for '%s': %s", url, exc)
