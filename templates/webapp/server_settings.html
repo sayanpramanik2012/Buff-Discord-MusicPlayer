@@ -1,0 +1,138 @@
+{% extends "webapp/base.html" %}
+{% block title %}{{ guild.name }} Settings — Buff Music Bot{% endblock %}
+
+{% block body %}
+<div class="layout">
+  {% set sub = sub if sub is defined else {'plan':'free'} %}
+  {% include "webapp/_sidebar.html" %}
+
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div style="display:flex;align-items:center;gap:10px;">
+        {% if guild.icon %}
+          <img src="https://cdn.discordapp.com/icons/{{ guild_id }}/{{ guild.icon }}.png?size=32"
+               style="width:32px;height:32px;border-radius:50%;" alt="">
+        {% endif %}
+        <div>
+          <div class="topbar-title">{{ guild.name }}</div>
+          <div class="topbar-sub">Server Settings</div>
+        </div>
+      </div>
+      <span class="badge badge-{{ plan }}">{{ plan | capitalize }}</span>
+    </div>
+
+    <div class="page-content">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in msgs %}
+          <div class="alert alert-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <form method="POST">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;" class="settings-grid">
+
+          <!-- General -->
+          <div class="card">
+            <div class="card-title">⚙️ General</div>
+            <div class="form-group">
+              <label class="form-label" for="prefix">Command Prefix</label>
+              <input class="form-control" id="prefix" name="prefix"
+                     value="{{ settings.prefix or '#' }}" maxlength="5" style="max-width:120px;"
+                     data-copy="{{ settings.prefix or '#' }}" title="Click to copy">
+              <div class="form-hint">Current prefix: <code data-copy="{{ settings.prefix or '#' }}" style="cursor:pointer;background:var(--bg-hover);padding:1px 5px;border-radius:4px;">{{ settings.prefix or '#' }}</code></div>
+            </div>
+          </div>
+
+          <!-- Audio -->
+          <div class="card">
+            <div class="card-title">🔊 Audio</div>
+            <div class="form-group">
+              <label class="form-label" for="volume">
+                Default Volume &nbsp;<span id="volume-label" style="color:var(--accent);">{{ settings.volume or 100 }}%</span>
+              </label>
+              <input type="range" class="form-control" id="volume" name="volume"
+                     min="1" max="200" value="{{ settings.volume or 100 }}">
+              <div class="form-hint">1% – 200% &nbsp;·&nbsp; 100% is normal</div>
+            </div>
+          </div>
+
+          <!-- Queue -->
+          <div class="card">
+            <div class="card-title">📋 Queue</div>
+            <div class="form-group">
+              <label class="form-label" for="max_queue_length">
+                Max Queue Length &nbsp;<span id="ql-label" style="color:var(--accent);">{{ settings.max_queue_length or 50 }} tracks</span>
+              </label>
+              <input type="range" class="form-control" id="max_queue_length" name="max_queue_length"
+                     min="5" max="{% if plan == 'max' %}500{% elif plan == 'pro' %}200{% else %}50{% endif %}"
+                     value="{{ settings.max_queue_length or 50 }}">
+              <div class="form-hint">
+                {% if plan == 'free' %}Free plan: max 50 tracks. <a href="/plans">Upgrade</a> for more.
+                {% elif plan == 'pro' %}Pro plan: up to 200 tracks.
+                {% else %}Max plan: up to 500 tracks.
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Behaviour -->
+          <div class="card">
+            <div class="card-title">🎛️ Behaviour</div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-name">Auto-disconnect</div>
+                <div class="toggle-desc">Leave voice after 60 s when alone</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" name="auto_disconnect" {% if settings.auto_disconnect %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-name">Announce songs</div>
+                <div class="toggle-desc">Post "Now playing" message in chat</div>
+              </div>
+              <label class="toggle">
+                <input type="checkbox" name="announce_songs" {% if settings.announce_songs %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Plan info -->
+          <div class="card" style="grid-column: 1 / -1;">
+            <div class="card-title">⭐ Plan</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+              <div>
+                <span class="badge badge-{{ plan }}" style="font-size:14px;padding:4px 14px;">{{ plan | capitalize }}</span>
+                <p style="color:var(--text-muted);font-size:13px;margin-top:6px;">
+                  {% if plan == 'free' %}Standard audio quality · 50-track queue limit{% endif %}
+                  {% if plan == 'pro' %}High-quality Opus audio · 200-track queue · No auto-disconnect{% endif %}
+                  {% if plan == 'max' %}High-quality Opus audio · 500-track queue · Priority processing{% endif %}
+                </p>
+              </div>
+              {% if plan == 'free' %}
+                <a href="/plans" class="btn btn-primary btn-sm">Upgrade Plan</a>
+              {% endif %}
+            </div>
+          </div>
+
+        </div>
+
+        <div style="margin-top:24px;display:flex;gap:10px;">
+          <button type="submit" class="btn btn-primary">💾 Save Settings</button>
+          <a href="/dashboard" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<style>
+@media (max-width: 640px) { .settings-grid { grid-template-columns: 1fr !important; } }
+</style>
+{% endblock %}

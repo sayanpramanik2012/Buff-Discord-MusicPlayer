@@ -1,0 +1,167 @@
+{% extends "webapp/base.html" %}
+{% block title %}Buff Music Bot — High-Quality Music for Discord{% endblock %}
+
+{% block body %}
+<!-- Nav -->
+<nav class="landing-nav">
+  <a href="/" class="landing-nav-brand">
+    🎵 <span>Buff</span> Music
+  </a>
+  <div class="nav-actions">
+    <span style="font-size:12px;color:var(--text-muted);margin-right:6px;">
+      <span class="bot-status-dot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--text-faint);margin-right:4px;vertical-align:middle;"></span>
+      <span data-stat-guilds>{{ stats.guilds }}</span> servers
+    </span>
+    {% if current_user.is_authenticated %}
+      <a href="/dashboard" class="btn btn-primary btn-sm">Dashboard</a>
+    {% else %}
+      <a href="/auth/login" class="btn btn-primary btn-sm">Login with Discord</a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <span class="hero-eyebrow">🎶 Now Streaming</span>
+  <h1>The music bot that<br><span class="accent">actually works</span></h1>
+  <p>Crystal-clear audio from YouTube &amp; Spotify, a polished dashboard, and plans that grow with your server.</p>
+  <div class="hero-actions">
+    <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.DISCORD_CLIENT_ID }}&permissions=3148800&scope=bot%20applications.commands"
+       class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+      ➕ Add to Discord
+    </a>
+    {% if current_user.is_authenticated %}
+      <a href="/dashboard" class="btn btn-ghost btn-lg">Open Dashboard</a>
+    {% else %}
+      <a href="/auth/login" class="btn btn-ghost btn-lg">Login with Discord</a>
+    {% endif %}
+  </div>
+</section>
+
+<!-- Stats -->
+<div class="stats-bar">
+  <div class="stats-bar-item">
+    <div class="stats-bar-value" data-stat-guilds>{{ stats.guilds }}</div>
+    <div class="stats-bar-label">Servers</div>
+  </div>
+  <div class="stats-bar-item">
+    <div class="stats-bar-value" data-stat-users>{{ stats.users }}</div>
+    <div class="stats-bar-label">Users</div>
+  </div>
+  <div class="stats-bar-item">
+    <div class="stats-bar-value">{{ db_stats.paid }}</div>
+    <div class="stats-bar-label">Premium members</div>
+  </div>
+  <div class="stats-bar-item">
+    <div class="stats-bar-value">{{ db_stats.premium_guilds }}</div>
+    <div class="stats-bar-label">Premium servers</div>
+  </div>
+</div>
+
+<!-- Features -->
+<section class="section">
+  <h2 class="section-title">Everything you need</h2>
+  <p class="section-sub">Built for servers that care about music quality — not just getting something playing.</p>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">▶️</div>
+      <div class="feature-title">YouTube &amp; Spotify</div>
+      <div class="feature-desc">Paste a YouTube URL, a Spotify track/playlist/album link, or just type a song name. We handle the rest.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔊</div>
+      <div class="feature-title">Opus passthrough</div>
+      <div class="feature-desc">When the source is already Opus (YouTube's native format), we copy it without re-encoding for perfect quality.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📋</div>
+      <div class="feature-title">Smart queue</div>
+      <div class="feature-desc">Queue up to 200 tracks (Pro) or unlimited (Max). Shuffle, remove by position, and auto-advance on finish.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎛️</div>
+      <div class="feature-title">Per-server settings</div>
+      <div class="feature-desc">Custom prefix, volume, DJ role, and more — all configured from this dashboard, saved instantly.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🍓</div>
+      <div class="feature-title">Runs on Raspberry Pi 4</div>
+      <div class="feature-desc">Lightweight streaming architecture — no local downloads. Low RAM, low CPU, happy Pi.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <div class="feature-title">Discord OAuth2</div>
+      <div class="feature-desc">Log in with your Discord account. We only see your username and the servers you manage — nothing else.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="section" id="pricing">
+  <h2 class="section-title">Simple pricing</h2>
+  <p class="section-sub">Start free. Upgrade when your server grows.</p>
+  <div class="plan-grid">
+    <!-- Free -->
+    <div class="plan-card">
+      <div>
+        <div class="plan-name" style="color:var(--plan-free)">Free</div>
+        <div class="plan-price">
+          <span class="plan-price-amount">$0</span>
+          <span class="plan-price-period">/ forever</span>
+        </div>
+      </div>
+      <div class="plan-features">
+        <div class="plan-feature active-feature"><span class="check">✓</span> Standard audio quality</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> Queue up to 50 tracks</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> YouTube &amp; Spotify</div>
+        <div class="plan-feature"><span class="cross">✗</span> Custom prefix &amp; settings</div>
+        <div class="plan-feature"><span class="cross">✗</span> Premium servers</div>
+      </div>
+      <a href="/auth/login" class="btn btn-ghost" style="width:100%;justify-content:center;">Get Started</a>
+    </div>
+
+    <!-- Pro -->
+    <div class="plan-card plan-pro-card" style="position:relative;">
+      <div class="plan-popular">Most Popular</div>
+      <div>
+        <div class="plan-name" style="color:var(--plan-pro)">Pro</div>
+        <div class="plan-price">
+          <span class="plan-price-amount">$4.99</span>
+          <span class="plan-price-period">/ month</span>
+        </div>
+      </div>
+      <div class="plan-features">
+        <div class="plan-feature active-feature"><span class="check">✓</span> High-quality Opus audio</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> Queue up to 200 tracks</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> <strong>2 premium servers</strong></div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> Custom prefix &amp; settings</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> No auto-disconnect</div>
+      </div>
+      <a href="/auth/login" class="btn btn-primary" style="width:100%;justify-content:center;">Upgrade to Pro</a>
+    </div>
+
+    <!-- Max -->
+    <div class="plan-card plan-max-card">
+      <div>
+        <div class="plan-name" style="color:var(--plan-max)">Max</div>
+        <div class="plan-price">
+          <span class="plan-price-amount">$9.99</span>
+          <span class="plan-price-period">/ month</span>
+        </div>
+      </div>
+      <div class="plan-features">
+        <div class="plan-feature active-feature"><span class="check">✓</span> High-quality Opus audio</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> Unlimited queue</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> <strong>10 premium servers</strong></div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> Custom prefix &amp; settings</div>
+        <div class="plan-feature active-feature"><span class="check">✓</span> Priority processing</div>
+      </div>
+      <a href="/auth/login" class="btn" style="width:100%;justify-content:center;background:var(--plan-max);color:#fff;">Upgrade to Max</a>
+    </div>
+  </div>
+</section>
+
+<footer class="landing-footer">
+  <p>© 2025 Buff Music Bot &nbsp;·&nbsp; <a href="/auth/login">Login</a> &nbsp;·&nbsp; <a href="#pricing">Pricing</a></p>
+</footer>
+{% endblock %}

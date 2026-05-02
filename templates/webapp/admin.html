@@ -1,0 +1,117 @@
+{% extends "webapp/base.html" %}
+{% block title %}Admin Panel — Buff Music Bot{% endblock %}
+
+{% block body %}
+<div class="layout">
+  {% set sub = {'plan': 'max'} %}
+  {% include "webapp/_sidebar.html" %}
+
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div>
+        <div class="topbar-title">Admin Panel</div>
+        <div class="topbar-sub">Manage users and subscriptions</div>
+      </div>
+      <span class="badge badge-danger">Admin</span>
+    </div>
+
+    <div class="page-content">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in msgs %}
+          <div class="alert alert-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <!-- DB Stats -->
+      <div class="stat-grid" style="margin-bottom:28px;">
+        <div class="stat-card">
+          <div class="stat-value">{{ db_stats.users }}</div>
+          <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--plan-pro)">{{ db_stats.paid }}</div>
+          <div class="stat-label">Paid Subscribers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ db_stats.guilds }}</div>
+          <div class="stat-label">Known Servers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--plan-max)">{{ db_stats.premium_guilds }}</div>
+          <div class="stat-label">Premium Servers</div>
+        </div>
+      </div>
+
+      <!-- Users table -->
+      <div class="card">
+        <div class="card-title">👥 All Users</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Discord ID</th>
+                <th>Plan</th>
+                <th>Admin</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td style="display:flex;align-items:center;gap:8px;">
+                  <img class="user-row-avatar"
+                       src="{{ 'https://cdn.discordapp.com/avatars/' + u.id + '/' + u.avatar + '.png?size=32' if u.avatar else 'https://cdn.discordapp.com/embed/avatars/0.png' }}"
+                       alt="{{ u.username }}">
+                  <span style="font-weight:600;">{{ u.username }}</span>
+                </td>
+                <td style="color:var(--text-muted);font-size:12px;font-family:monospace;">{{ u.id }}</td>
+                <td><span class="badge badge-{{ u.plan or 'free' }}">{{ (u.plan or 'free') | capitalize }}</span></td>
+                <td>
+                  {% if u.is_admin %}
+                    <span class="badge badge-danger">Admin</span>
+                  {% else %}
+                    <span style="color:var(--text-faint);">—</span>
+                  {% endif %}
+                </td>
+                <td style="color:var(--text-muted);font-size:12px;">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+                <td>
+                  <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <!-- Set plan -->
+                    <form method="POST" action="/admin/set_plan" style="display:inline-flex;gap:4px;">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <select name="plan" class="form-control" style="width:auto;padding:3px 6px;font-size:11px;">
+                        <option value="free"  {% if (u.plan or 'free') == 'free' %}selected{% endif %}>Free</option>
+                        <option value="pro"   {% if (u.plan or 'free') == 'pro'  %}selected{% endif %}>Pro</option>
+                        <option value="max"   {% if (u.plan or 'free') == 'max'  %}selected{% endif %}>Max</option>
+                      </select>
+                      <button type="submit" class="btn btn-primary btn-sm">Set</button>
+                    </form>
+                    <!-- Toggle admin -->
+                    {% if u.id != current_user.id %}
+                    <form method="POST" action="/admin/toggle_admin">
+                      <input type="hidden" name="user_id" value="{{ u.id }}">
+                      <input type="hidden" name="is_admin" value="{{ '0' if u.is_admin else '1' }}">
+                      <button type="submit" class="btn btn-sm {% if u.is_admin %}btn-danger{% else %}btn-ghost{% endif %}">
+                        {{ 'Revoke Admin' if u.is_admin else 'Make Admin' }}
+                      </button>
+                    </form>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:32px;">No users yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

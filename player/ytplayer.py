@@ -13,14 +13,18 @@ from typing import Any, Dict, Optional
 import discord
 import yt_dlp
 
+import db
 from .queue_manager import Track, TrackSource, queue_manager
 
 logger = logging.getLogger(__name__)
 
-# ─── yt-dlp options ───────────────────────────────────────────────────────────
-# Format priority: opus-in-webm (copy, zero re-encode) → m4a → any best audio
-_YTDL_OPTS: Dict[str, Any] = {
-    "format": "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+# ─── yt-dlp format strings per plan ──────────────────────────────────────────
+# Pro/Max: native Opus passthrough → webm/opus → m4a → any best audio (zero re-encode path)
+# Free:    cap at 128 kbps to stay within plan limits
+_FMT_PREMIUM = "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best"
+_FMT_FREE    = "bestaudio[abr<=128]/bestaudio/best"
+
+_BASE_YTDL_OPTS: Dict[str, Any] = {
     "quiet": True,
     "no_warnings": True,
     "noplaylist": True,
@@ -34,9 +38,13 @@ _YTDL_OPTS: Dict[str, Any] = {
     },
 }
 
+
+def _ytdl_opts_for_plan(plan: str) -> Dict[str, Any]:
+    fmt = _FMT_PREMIUM if plan in ("pro", "max") else _FMT_FREE
+    return {**_BASE_YTDL_OPTS, "format": fmt}
+
+
 # ─── FFmpeg options ───────────────────────────────────────────────────────────
-# -reconnect flags keep streams alive through brief network hiccups.
-# -analyzeduration 0 reduces initial buffering latency.
 _FFMPEG_BEFORE = (
     "-reconnect 1 "
     "-reconnect_streamed 1 "
@@ -101,7 +109,6 @@ async def _advance(
     guild_id: int,
     text_channel: Optional[discord.abc.Messageable],
 ) -> None:
-    """Pop the next track and play it, or disconnect if queue is empty."""
     if not voice_client or not voice_client.is_connected():
         return
 
@@ -119,12 +126,14 @@ async def _advance(
     await _play_track(voice_client, guild_id, track, text_channel)
 
 
-async def _fetch_info(url: str) -> Optional[Dict[str, Any]]:
-    """Run yt-dlp in a thread pool and return the info dict."""
+async def _fetch_info(url: str, guild_id: int) -> Optional[Dict[str, Any]]:
+    """Run yt-dlp in a thread pool using the correct quality tier for this guild."""
     loop = asyncio.get_running_loop()
+    plan = db.get_guild_plan(str(guild_id))
+    opts = _ytdl_opts_for_plan(plan)
 
     def _run() -> Optional[Dict[str, Any]]:
-        with yt_dlp.YoutubeDL(_YTDL_OPTS) as ydl:
+        with yt_dlp.YoutubeDL(opts) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
                 # ytsearch1: returns a playlist wrapper; unwrap it
@@ -149,7 +158,7 @@ async def _play_track(
     text_channel: Optional[discord.abc.Messageable],
 ) -> None:
     try:
-        info = await _fetch_info(track.url)
+        info = await _fetch_info(track.url, guild_id)
 
         if not info:
             logger.warning("No info returned for track: %s", track.display_title)
@@ -163,7 +172,6 @@ async def _play_track(
 
         stream_url = info.get("url")
         if not stream_url:
-            # Some formats nest the URL in a formats list
             formats = info.get("formats", [])
             audio_formats = [
                 f for f in formats if f.get("acodec", "none") != "none" and f.get("url")
@@ -183,7 +191,7 @@ async def _play_track(
             await _advance(voice_client, guild_id, text_channel)
             return
 
-        # Fill gaps in track metadata from yt-dlp response
+        # Fill metadata gaps from yt-dlp response
         if not track.title or track.title == "Unknown":
             track.title = info.get("title", "Unknown")
         if not track.artist:
@@ -195,9 +203,7 @@ async def _play_track(
 
         _current[guild_id] = track
 
-        # Build the audio source.
-        # from_probe detects whether the stream is already Opus and uses
-        # codec=copy when it is, avoiding an unnecessary re-encode.
+        # from_probe auto-detects codec; uses copy for native Opus streams
         audio_source = await discord.FFmpegOpusAudio.from_probe(
             stream_url,
             before_options=_FFMPEG_BEFORE,
@@ -208,7 +214,6 @@ async def _play_track(
             voice_client.stop()
             await asyncio.sleep(0.15)
 
-        # Send "Now Playing" before starting playback
         if text_channel:
             await text_channel.send(_now_playing_msg(track, guild_id))
 
@@ -225,7 +230,9 @@ async def _play_track(
         voice_client.play(audio_source, after=_after)
 
     except Exception as exc:
-        logger.error("Exception in _play_track for '%s': %s", track.display_title, exc, exc_info=True)
+        logger.error(
+            "Exception in _play_track for '%s': %s", track.display_title, exc, exc_info=True
+        )
         if text_channel:
             await text_channel.send(
                 f"Oops! Something went wrong while trying to play **{track.display_title}**. "

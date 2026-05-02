@@ -5,9 +5,9 @@ import threading
 
 import discord
 from discord.ext import commands
-from flask import Flask, jsonify, render_template, request
 
 import config
+import db
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -17,15 +17,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# ─── Dynamic prefix (falls back to config.PREFIX in DMs / on error) ──────────
+async def _get_prefix(bot: commands.Bot, message: discord.Message) -> str:
+    if message.guild:
+        return db.get_guild_prefix(str(message.guild.id))
+    return config.PREFIX
+
+
 # ─── Discord bot ──────────────────────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 intents.guilds = True
-intents.members = False  # not needed; reduces privilege requirements
+intents.members = False
 
 bot = commands.Bot(
-    command_prefix=config.PREFIX,
+    command_prefix=_get_prefix,
     intents=intents,
     description="Buff Music Bot — plays YouTube & Spotify via YouTube",
 )
@@ -34,6 +42,7 @@ bot = commands.Bot(
 @bot.event
 async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, bot.user.id)
+    db.init_db()
     await bot.change_presence(
         activity=discord.Activity(
             type=discord.ActivityType.listening,
@@ -45,12 +54,13 @@ async def on_ready():
 @bot.event
 async def on_command_error(ctx: commands.Context, error):
     if isinstance(error, commands.MissingRequiredArgument):
+        prefix = await _get_prefix(bot, ctx.message)
         await ctx.send(
             f"Looks like you forgot something! I need `{error.param.name}` to run that command. "
-            f"Try `{config.PREFIX}help {ctx.command}` to see how to use it."
+            f"Try `{prefix}help {ctx.command}` to see how to use it."
         )
     elif isinstance(error, commands.CommandNotFound):
-        pass  # silently ignore unknown commands
+        pass
     elif isinstance(error, commands.NoPrivateMessage):
         await ctx.send("This command only works inside a server — I can't do that in DMs!")
     elif isinstance(error, commands.CommandInvokeError):
@@ -64,66 +74,23 @@ async def on_command_error(ctx: commands.Context, error):
 
 
 # ─── Flask web dashboard ──────────────────────────────────────────────────────
-app = Flask(__name__)
-
-
-@app.route("/")
-def index():
-    try:
-        guild_count = len(bot.guilds) if bot.is_ready() else 0
-        user_count = sum(g.member_count or 0 for g in bot.guilds) if bot.is_ready() else 0
-        return render_template(
-            "index.html",
-            bot_is_online=bot.is_ready(),
-            total_servers=guild_count,
-            total_users=user_count,
-            prefix=config.PREFIX,
-            current_page=1,
-            total_pages=1,
-            total_files=0,
-        )
-    except Exception as exc:
-        logger.error("Flask / route error: %s", exc)
-        return render_template(
-            "index.html",
-            bot_is_online=False,
-            total_servers=0,
-            total_users=0,
-            prefix=config.PREFIX,
-            current_page=1,
-            total_pages=1,
-            total_files=0,
-        )
-
-
-@app.route("/api/status")
-def api_status():
-    return jsonify(
-        {
-            "online": bot.is_ready(),
-            "guilds": len(bot.guilds) if bot.is_ready() else 0,
-            "users": sum(g.member_count or 0 for g in bot.guilds) if bot.is_ready() else 0,
-        }
-    )
-
-
-@app.route("/api/songs")
-def api_songs():
-    # Streaming-only bot — no local cache; return empty for dashboard compatibility
-    return jsonify({"songs": [], "total_files": 0, "total_pages": 0})
-
-
-def _run_flask():
-    app.run(host="0.0.0.0", port=config.FLASK_PORT, debug=False, use_reloader=False)
+def _run_flask(flask_app):
+    flask_app.run(host="0.0.0.0", port=config.FLASK_PORT, debug=False, use_reloader=False)
 
 
 # ─── Entry point ─────────────────────────────────────────────────────────────
 async def main():
+    db.init_db()
+
     async with bot:
         await bot.load_extension("commands.music")
         logger.info("Music cog loaded")
 
-        flask_thread = threading.Thread(target=_run_flask, daemon=True)
+        # Import here so db.init_db() runs first
+        from webapp import create_app
+        flask_app = create_app(bot)
+
+        flask_thread = threading.Thread(target=_run_flask, args=(flask_app,), daemon=True)
         flask_thread.start()
         logger.info("Flask dashboard started on port %s", config.FLASK_PORT)
 
