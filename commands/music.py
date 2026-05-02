@@ -18,6 +18,7 @@ from typing import List, Optional
 import discord
 from discord.ext import commands
 
+import db
 from player.queue_manager import Track, TrackSource, queue_manager
 from player.ytplayer import (
     enqueue_and_play,
@@ -42,8 +43,16 @@ from search.youtube import (
 
 logger = logging.getLogger(__name__)
 
-# Safety cap so a single playlist can't flood the queue
+# Hard safety cap — even Max plan won't import more than this per playlist call
 _MAX_PLAYLIST = 200
+
+
+def _playlist_cap(guild_id: int) -> int:
+    """Return max tracks to import from a playlist for this guild's plan."""
+    plan = db.get_guild_plan(str(guild_id))
+    plan_limit = db.PLAN_QUEUE_LIMITS.get(plan, 50)
+    # plan_limit 0 = unlimited (Max) → use the hard safety cap
+    return plan_limit if plan_limit > 0 else _MAX_PLAYLIST
 
 
 class Music(commands.Cog, name="Music"):
@@ -156,7 +165,7 @@ class Music(commands.Cog, name="Music"):
                     )
                     return
 
-                raw = raw[:_MAX_PLAYLIST]
+                raw = raw[:_playlist_cap(ctx.guild.id)]
                 await ctx.send(
                     f"Nice! 🎶 I found **{len(raw)}** tracks in that Spotify {sp_type}. "
                     "Give me a moment while I search YouTube for each one!"
@@ -200,7 +209,7 @@ class Music(commands.Cog, name="Music"):
                 )
                 return
 
-            entries = entries[:_MAX_PLAYLIST]
+            entries = entries[:_playlist_cap(ctx.guild.id)]
             await ctx.send(
                 f"I found **{len(entries)}** tracks in that playlist! "
                 "Loading them up now... 🎵"
@@ -405,6 +414,11 @@ class Music(commands.Cog, name="Music"):
 
         humans = [m for m in vc.channel.members if not m.bot]
         if humans:
+            return
+
+        # Respect the auto_disconnect toggle from guild settings
+        settings = db.get_guild_settings(str(member.guild.id))
+        if not settings.get("auto_disconnect", 1):
             return
 
         # Wait 60 s then disconnect if still alone

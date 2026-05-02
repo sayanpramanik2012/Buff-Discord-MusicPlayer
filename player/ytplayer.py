@@ -19,8 +19,6 @@ from .queue_manager import Track, TrackSource, queue_manager
 logger = logging.getLogger(__name__)
 
 # ─── yt-dlp format strings per plan ──────────────────────────────────────────
-# Pro/Max: native Opus passthrough → webm/opus → m4a → any best audio (zero re-encode path)
-# Free:    cap at 128 kbps to stay within plan limits
 _FMT_PREMIUM = "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best"
 _FMT_FREE    = "bestaudio[abr<=128]/bestaudio/best"
 
@@ -52,7 +50,6 @@ _FFMPEG_BEFORE = (
     "-analyzeduration 0 "
     "-loglevel warning"
 )
-_FFMPEG_OPTS = "-vn"
 
 # ─── Per-guild state ──────────────────────────────────────────────────────────
 _current: Dict[int, Track] = {}
@@ -72,6 +69,26 @@ async def enqueue_and_play(
 ) -> None:
     """Add *track* to the guild queue. If idle, start playback immediately."""
     already_playing = voice_client.is_playing() or voice_client.is_paused()
+
+    if already_playing:
+        # Enforce queue length: respect both plan cap and server-configured limit.
+        plan          = db.get_guild_plan(str(guild_id))
+        plan_limit    = db.PLAN_QUEUE_LIMITS.get(plan, 50)  # 0 = unlimited (Max)
+        settings      = db.get_guild_settings(str(guild_id))
+        settings_limit = settings.get("max_queue_length", 50)
+
+        # Effective limit = lower of plan cap and server setting (plan=0 means skip plan cap)
+        effective_limit = min(plan_limit, settings_limit) if plan_limit > 0 else settings_limit
+
+        if queue_manager.size(guild_id) >= effective_limit:
+            if text_channel:
+                await text_channel.send(
+                    f"⚠️ The queue is full! The **{plan.capitalize()}** plan allows up to "
+                    f"**{effective_limit}** tracks in the queue. "
+                    "Skip or remove some songs to make room."
+                )
+            return
+
     queue_manager.add(guild_id, track)
 
     if already_playing:
@@ -136,7 +153,6 @@ async def _fetch_info(url: str, guild_id: int) -> Optional[Dict[str, Any]]:
         with yt_dlp.YoutubeDL(opts) as ydl:
             try:
                 info = ydl.extract_info(url, download=False)
-                # ytsearch1: returns a playlist wrapper; unwrap it
                 if info and "entries" in info:
                     entries = [e for e in info["entries"] if e]
                     info = entries[0] if entries else None
@@ -203,18 +219,30 @@ async def _play_track(
 
         _current[guild_id] = track
 
-        # from_probe auto-detects codec; uses copy for native Opus streams
+        # Read guild settings once for volume and announce toggle
+        settings = db.get_guild_settings(str(guild_id))
+        volume   = settings.get("volume", 100)
+
+        # Apply volume via FFmpeg audio filter only when it differs from 100 %.
+        # Non-unity volume forces a decode→filter→re-encode pass (no Opus copy).
+        if volume != 100:
+            ffmpeg_opts = f"-vn -af volume={volume / 100:.3f}"
+        else:
+            ffmpeg_opts = "-vn"
+
+        # from_probe auto-detects codec; uses copy for native Opus streams (zero re-encode)
         audio_source = await discord.FFmpegOpusAudio.from_probe(
             stream_url,
             before_options=_FFMPEG_BEFORE,
-            options=_FFMPEG_OPTS,
+            options=ffmpeg_opts,
         )
 
         if voice_client.is_playing() or voice_client.is_paused():
             voice_client.stop()
             await asyncio.sleep(0.15)
 
-        if text_channel:
+        # Respect the announce_songs toggle from guild settings
+        if settings.get("announce_songs", 1) and text_channel:
             await text_channel.send(_now_playing_msg(track, guild_id))
 
         event_loop = asyncio.get_running_loop()
