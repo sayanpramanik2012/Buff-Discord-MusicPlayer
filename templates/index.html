@@ -787,41 +787,51 @@
     <!-- Commands Section -->
     <section id="commands" class="commands">
         <h2 class="section-title">Bot Commands</h2>
-        <p class="section-subtitle">All commands start with ode style="background: var(--bg-card); padding: 0.2rem 0.5rem; border-radius: 5px;";">=</code></p>
+        <p class="section-subtitle">All commands start with <code style="background: var(--bg-card); padding: 0.2rem 0.5rem; border-radius: 5px;">{{ prefix }}</code></p>
         
         <div class="commands-grid">
             <div class="command-card">
-                <div class="command-name">=play [song]</div>
+                <div class="command-name">{{ prefix }}play [song / URL]</div>
                 <div class="command-description">Play a song from YouTube or Spotify. Supports URLs and search queries.</div>
             </div>
-            
+
             <div class="command-card">
-                <div class="command-name">=pause</div>
+                <div class="command-name">{{ prefix }}pause</div>
                 <div class="command-description">Pause the currently playing song.</div>
             </div>
-            
+
             <div class="command-card">
-                <div class="command-name">=resume</div>
+                <div class="command-name">{{ prefix }}resume</div>
                 <div class="command-description">Resume the paused song.</div>
             </div>
-            
+
             <div class="command-card">
-                <div class="command-name">=skip</div>
+                <div class="command-name">{{ prefix }}skip</div>
                 <div class="command-description">Skip the current song and play the next one in queue.</div>
             </div>
-            
+
             <div class="command-card">
-                <div class="command-name">=queue</div>
+                <div class="command-name">{{ prefix }}queue</div>
                 <div class="command-description">View all songs in the current queue.</div>
             </div>
-            
+
             <div class="command-card">
-                <div class="command-name">=shuffle</div>
+                <div class="command-name">{{ prefix }}shuffle</div>
                 <div class="command-description">Shuffle the songs in the queue.</div>
             </div>
-            
+
             <div class="command-card">
-                <div class="command-name">=disconnect</div>
+                <div class="command-name">{{ prefix }}nowplaying</div>
+                <div class="command-description">Show an embed with the currently playing song and source.</div>
+            </div>
+
+            <div class="command-card">
+                <div class="command-name">{{ prefix }}remove [#]</div>
+                <div class="command-description">Remove a track from the queue by its position number.</div>
+            </div>
+
+            <div class="command-card">
+                <div class="command-name">{{ prefix }}disconnect</div>
                 <div class="command-description">Disconnect the bot from the voice channel and clear the queue.</div>
             </div>
         </div>

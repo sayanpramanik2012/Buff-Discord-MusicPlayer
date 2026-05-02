@@ -1,19 +1,24 @@
-FROM python:3.9-slim
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    libopus0 \
+    libopus-dev \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install ffmpeg, git, and other dependencies
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install git+https://github.com/ytdl-org/youtube-dl.git@master#egg=youtube_dl
-
-COPY . /app
+COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]
