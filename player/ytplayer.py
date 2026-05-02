@@ -42,14 +42,28 @@ def _ytdl_opts_for_plan(plan: str) -> Dict[str, Any]:
     return {**_BASE_YTDL_OPTS, "format": fmt}
 
 
-# ─── FFmpeg options ───────────────────────────────────────────────────────────
-_FFMPEG_BEFORE = (
+# ─── FFmpeg base options ─────────────────────────────────────────────────────
+# -analyzeduration 0 removed: it causes EINVAL on streams that need format
+# detection time. Reconnect flags keep streams alive through brief drops.
+_FFMPEG_RECONNECT = (
     "-reconnect 1 "
     "-reconnect_streamed 1 "
     "-reconnect_delay_max 5 "
-    "-analyzeduration 0 "
     "-loglevel warning"
 )
+
+
+def _build_ffmpeg_before(http_headers: Dict[str, str]) -> str:
+    """
+    Build the FFmpeg before_options string.
+    Injects the HTTP headers that yt-dlp used to fetch the stream URL so
+    FFmpeg can authenticate the same way — fixes 403/EINVAL on YouTube streams
+    that require a matching User-Agent or other request headers.
+    """
+    if not http_headers:
+        return _FFMPEG_RECONNECT
+    header_str = "".join(f"{k}: {v}\r\n" for k, v in http_headers.items())
+    return f'{_FFMPEG_RECONNECT} -headers "{header_str}"'
 
 # ─── Per-guild state ──────────────────────────────────────────────────────────
 _current: Dict[int, Track] = {}
@@ -239,10 +253,15 @@ async def _play_track(
         else:
             ffmpeg_opts = "-vn"
 
+        # Pass yt-dlp's HTTP headers to FFmpeg so it can authenticate the
+        # same way — YouTube returns 403 if User-Agent / headers don't match.
+        http_headers = info.get("http_headers") or {}
+        ffmpeg_before = _build_ffmpeg_before(http_headers)
+
         # from_probe auto-detects codec; uses copy for native Opus streams (zero re-encode)
         audio_source = await discord.FFmpegOpusAudio.from_probe(
             stream_url,
-            before_options=_FFMPEG_BEFORE,
+            before_options=ffmpeg_before,
             options=ffmpeg_opts,
         )
 
