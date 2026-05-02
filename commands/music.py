@@ -139,7 +139,7 @@ class Music(commands.Cog, name="Music"):
                     )
                     return
                 track = Track(
-                    url=f"ytsearch5:{info['search_query']}",
+                    url=f"ytsearch5:{info['search_query']} official audio",
                     title=info["title"],
                     artist=info["artist"],
                     source=TrackSource.SPOTIFY,

@@ -75,6 +75,19 @@ def _is_short(entry: Dict[str, Any]) -> bool:
     return False
 
 
+# Keywords that indicate the user already has a specific intent — don't override
+_INTENT_KEYWORDS = {"live", "cover", "remix", "acoustic", "karaoke", "lyrics",
+                    "instrumental", "official", "audio", "video", "ft.", "feat."}
+
+
+def _music_query(query: str) -> str:
+    """Append 'official audio' to a plain query unless the user already expressed intent."""
+    words = set(query.lower().split())
+    if words & _INTENT_KEYWORDS:
+        return query  # user already specified what they want
+    return f"{query} official audio"
+
+
 # ─── Public helpers ───────────────────────────────────────────────────────────
 
 def is_youtube_url(query: str) -> bool:
@@ -113,7 +126,7 @@ async def search(query: str) -> Optional[Dict[str, Any]]:
     def _run_search() -> Optional[Dict[str, Any]]:
         with yt_dlp.YoutubeDL(_SEARCH_OPTS) as ydl:
             try:
-                info = ydl.extract_info(f"ytsearch5:{query}", download=False)
+                info = ydl.extract_info(f"ytsearch5:{_music_query(query)}", download=False)
                 if not info or "entries" not in info:
                     return None
                 entries = [e for e in info["entries"] if e and e.get("id")]
