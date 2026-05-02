@@ -20,7 +20,7 @@ Runs on any machine including **Raspberry Pi 4** via Docker (ARM64 native).
 
 ### Web Dashboard
 - **Discord OAuth2 login** — users sign in with their Discord account
-- **Subscription plans** — Free, Pro ($4.99/mo), Max ($9.99/mo) stored in SQLite
+- **Subscription plans** — Free, Pro ($1.99/mo), Max ($3.99/mo) stored in SQLite
 - **Per-server settings** — custom prefix, volume, queue length cap, auto-disconnect, announce-songs toggles
 - **Server assignment** — Pro allows 2 premium servers, Max allows 10
 - **Admin panel** — admins bypass payment; can set any plan and promote other users
@@ -307,8 +307,8 @@ Access at `http://localhost:5000` (or your server's IP/domain).
 | Plan | Price | Premium Servers | Queue Cap | Audio Quality |
 |------|-------|-----------------|-----------|---------------|
 | **Free** | $0 | 0 | 50 tracks | Standard (≤128 kbps) |
-| **Pro** | $4.99/mo | 2 | 200 tracks | Highest (Opus passthrough) |
-| **Max** | $9.99/mo | 10 | Unlimited | Highest (Opus passthrough) |
+| **Pro** | $1.99/mo | 2 | 200 tracks | Highest (Opus passthrough) |
+| **Max** | $3.99/mo | 10 | Unlimited | Highest (Opus passthrough) |
 
 Admins bypass all plan restrictions and can set any plan without payment.
 
