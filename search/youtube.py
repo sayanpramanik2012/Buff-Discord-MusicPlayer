@@ -24,12 +24,6 @@ _YT_PLAYLIST_RE = re.compile(
 
 # ─── yt-dlp configs ───────────────────────────────────────────────────────────
 
-# tv_embedded and ios clients bypass YouTube's bot-detection challenge more
-# reliably than the default web client when running from a server IP.
-_EXTRACTOR_ARGS: Dict[str, Any] = {
-    "youtube": {"player_client": ["tv_embedded", "ios", "web"]}
-}
-
 
 def _apply_cookies(opts: Dict[str, Any]) -> Dict[str, Any]:
     """Inject cookiefile into opts when YT_COOKIES_FILE is configured."""
@@ -45,7 +39,6 @@ _SEARCH_OPTS: Dict[str, Any] = {
     "noplaylist": False,          # must be False to get all 5 search entries
     "extract_flat": "in_playlist",
     "source_address": "0.0.0.0",
-    "extractor_args": _EXTRACTOR_ARGS,
 }
 
 # For direct YouTube URLs: full metadata (title, duration, thumbnail)
@@ -55,7 +48,6 @@ _DIRECT_OPTS: Dict[str, Any] = {
     "no_warnings": True,
     "noplaylist": True,
     "source_address": "0.0.0.0",
-    "extractor_args": _EXTRACTOR_ARGS,
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -71,7 +63,6 @@ _PLAYLIST_OPTS: Dict[str, Any] = {
     "extract_flat": True,
     "noplaylist": False,
     "source_address": "0.0.0.0",
-    "extractor_args": _EXTRACTOR_ARGS,
 }
 
 

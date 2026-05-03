@@ -28,7 +28,6 @@ _BASE_YTDL_OPTS: Dict[str, Any] = {
     "no_warnings": True,
     "noplaylist": True,
     "source_address": "0.0.0.0",
-    "extractor_args": {"youtube": {"player_client": ["tv_embedded", "ios", "web"]}},
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
