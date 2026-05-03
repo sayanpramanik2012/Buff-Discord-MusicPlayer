@@ -47,15 +47,10 @@ def _ytdl_opts_for_plan(plan: str) -> Dict[str, Any]:
 
 
 # ─── FFmpeg base options ─────────────────────────────────────────────────────
-# Reconnect flags keep streams alive through brief CDN drops.
-# Note: YouTube CDN URLs are self-authenticating (signed tokens in the URL),
-# so we do NOT pass -headers here — literal \r\n in shlex.split() causes EINVAL.
-_FFMPEG_RECONNECT = (
-    "-reconnect 1 "
-    "-reconnect_streamed 1 "
-    "-reconnect_delay_max 5 "
-    "-loglevel warning"
-)
+# -reconnect_streamed removed: causes EINVAL with YouTube CDN chunked responses.
+# from_probe removed: probing opens the stream twice (EINVAL risk) and its
+# copy-mode path silently ignores the volume audio filter.
+_FFMPEG_RECONNECT = "-reconnect 1 -reconnect_delay_max 5"
 
 # ─── Per-guild state ──────────────────────────────────────────────────────────
 _current: Dict[int, Track] = {}
@@ -245,9 +240,14 @@ async def _play_track(
         else:
             ffmpeg_opts = "-vn"
 
-        # from_probe auto-detects codec; uses copy for native Opus streams (zero re-encode)
-        audio_source = await discord.FFmpegOpusAudio.from_probe(
+        # Always transcode to Opus — avoids from_probe's copy-mode path which
+        # silently skips audio filters and causes EINVAL on some CDN responses.
+        plan = db.get_guild_plan(str(guild_id))
+        bitrate = 192 if plan in ("pro", "max") else 128
+        audio_source = discord.FFmpegOpusAudio(
             stream_url,
+            bitrate=bitrate,
+            codec="libopus",
             before_options=_FFMPEG_RECONNECT,
             options=ffmpeg_opts,
         )
