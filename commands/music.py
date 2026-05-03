@@ -49,6 +49,28 @@ def _playlist_cap(guild_id: int) -> int:
     return db.PLAN_QUEUE_LIMITS.get(plan, 50)
 
 
+def _effective_queue_limit(guild_id: int) -> int:
+    """Lower of plan cap and per-server max_queue_length setting."""
+    plan = db.get_guild_plan(str(guild_id))
+    plan_limit = db.PLAN_QUEUE_LIMITS.get(plan, 50)
+    settings_limit = db.get_guild_settings(str(guild_id)).get(
+        "max_queue_length", plan_limit
+    )
+    return min(plan_limit, settings_limit)
+
+
+def _trim_to_capacity(gid: int, tracks: List[Track], vc) -> tuple:
+    """Trim a track list so total load (current + new) ≤ effective queue limit.
+    Returns (kept, dropped, effective_limit)."""
+    effective_limit = _effective_queue_limit(gid)
+    is_active = bool(vc and (vc.is_playing() or vc.is_paused()))
+    current_load = queue_manager.size(gid) + (1 if is_active else 0)
+    available = max(0, effective_limit - current_load)
+    if len(tracks) > available:
+        return tracks[:available], len(tracks) - available, effective_limit
+    return tracks, 0, effective_limit
+
+
 class Music(commands.Cog, name="Music"):
     """🎵 Music commands"""
 
@@ -175,6 +197,18 @@ class Music(commands.Cog, name="Music"):
                     )
                     for t in raw
                 ]
+                tracks, dropped, eff_limit = _trim_to_capacity(gid, tracks, vc)
+                if not tracks:
+                    await ctx.send(
+                        f"⚠️ Your queue is already full (**{eff_limit}** tracks max). "
+                        "Skip or remove some songs to make room!"
+                    )
+                    return
+                if dropped:
+                    await ctx.send(
+                        f"⚠️ Heads up — your queue cap is **{eff_limit}**, so I'll add "
+                        f"the first **{len(tracks)}** tracks and skip the remaining **{dropped}**."
+                    )
                 # Start the first track; bulk-add the rest to avoid chat spam.
                 first, *rest = tracks
                 await enqueue_and_play(vc, gid, first, ch)
@@ -219,6 +253,18 @@ class Music(commands.Cog, name="Music"):
                 )
                 for e in entries
             ]
+            tracks, dropped, eff_limit = _trim_to_capacity(gid, tracks, vc)
+            if not tracks:
+                await ctx.send(
+                    f"⚠️ Your queue is already full (**{eff_limit}** tracks max). "
+                    "Skip or remove some songs to make room!"
+                )
+                return
+            if dropped:
+                await ctx.send(
+                    f"⚠️ Heads up — your queue cap is **{eff_limit}**, so I'll add "
+                    f"the first **{len(tracks)}** tracks and skip the remaining **{dropped}**."
+                )
             first, *rest = tracks
             await enqueue_and_play(vc, gid, first, ch)
             if rest:

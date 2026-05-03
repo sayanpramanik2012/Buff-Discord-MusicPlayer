@@ -59,7 +59,6 @@ Buff-Discord-MusicPlayer/
 │   └── app.js               # Sidebar toggle, flash dismiss, live status poll
 │
 ├── templates/
-│   ├── index.html           # Public landing page
 │   └── webapp/
 │       ├── base.html        # Base layout (Inter font, CSS/JS includes)
 │       ├── landing.html     # Marketing page — hero, stats, features, pricing
