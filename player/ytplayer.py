@@ -8,6 +8,7 @@ direct youtube.com/watch?v=... URLs.
 
 import asyncio
 import logging
+import tempfile
 from typing import Any, Dict, Optional
 
 import discord
@@ -240,16 +241,20 @@ async def _play_track(
         else:
             ffmpeg_opts = "-vn"
 
-        # Always transcode to Opus — avoids from_probe's copy-mode path which
-        # silently skips audio filters and causes EINVAL on some CDN responses.
+        # Drop codec= so discord.py emits "-c:a libopus" (real transcode).
+        # Passing codec="libopus" or "opus" triggers "-c:a copy" which fails
+        # to remux WebM-framed Opus from YouTube into a raw Opus container
+        # (different packet framing → FFmpeg exits with EINVAL).
         plan = db.get_guild_plan(str(guild_id))
         bitrate = 192 if plan in ("pro", "max") else 128
+        # Capture FFmpeg stderr so we can log real errors instead of guessing.
+        stderr_file = tempfile.TemporaryFile(mode="w+b")
         audio_source = discord.FFmpegOpusAudio(
             stream_url,
             bitrate=bitrate,
-            codec="libopus",
             before_options=_FFMPEG_RECONNECT,
             options=ffmpeg_opts,
+            stderr=stderr_file,
         )
 
         if voice_client.is_playing() or voice_client.is_paused():
@@ -263,8 +268,24 @@ async def _play_track(
         event_loop = asyncio.get_running_loop()
 
         def _after(err: Optional[Exception]) -> None:
-            if err:
-                logger.error("Playback error in guild %s: %s", guild_id, err)
+            # Drain FFmpeg stderr (captured to temp file) for diagnostics.
+            try:
+                stderr_file.seek(0)
+                stderr_text = stderr_file.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                stderr_text = ""
+            finally:
+                stderr_file.close()
+
+            rc = getattr(audio_source, "_process", None)
+            rc = rc.returncode if rc is not None else None
+
+            if err or (rc not in (0, None)):
+                logger.error(
+                    "Playback failed for '%s' (rc=%s): %s\nFFmpeg stderr: %s",
+                    track.display_title, rc, err, stderr_text or "<empty>",
+                )
+
             asyncio.run_coroutine_threadsafe(
                 _advance(voice_client, guild_id, text_channel),
                 event_loop,
