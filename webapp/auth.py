@@ -95,13 +95,23 @@ def callback():
         admin_ids     = config.ADMIN_USER_IDS,
     )
 
-    # Filter manageable guilds and cache in session
+    # Trim guild objects to the 4 fields we use — Discord responses include
+    # many extra fields (features, splash, banner, ...) that bloat the session
+    # cookie past the 4KB browser limit, causing silent data loss.
     manageable = [
-        g for g in guilds
+        {
+            "id":          g["id"],
+            "name":        g["name"],
+            "icon":        g.get("icon"),
+            "permissions": str(g.get("permissions", "0")),
+        }
+        for g in guilds
         if int(g.get("permissions", 0)) & (MANAGE_GUILD | ADMINISTRATOR)
     ]
     session["guilds"]       = manageable
     session["access_token"] = access_token
+    # Persist to DB so guild list survives session cookie loss / expiry
+    db.cache_user_guilds(u["id"], manageable)
 
     user_obj = User(db.get_user(u["id"]))
     login_user(user_obj, remember=True)

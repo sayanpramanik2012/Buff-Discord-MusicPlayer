@@ -8,11 +8,13 @@ direct youtube.com/watch?v=... URLs.
 
 import asyncio
 import logging
+import tempfile
 from typing import Any, Dict, Optional
 
 import discord
 import yt_dlp
 
+import config
 import db
 from .queue_manager import Track, TrackSource, queue_manager
 
@@ -39,31 +41,17 @@ _BASE_YTDL_OPTS: Dict[str, Any] = {
 
 def _ytdl_opts_for_plan(plan: str) -> Dict[str, Any]:
     fmt = _FMT_PREMIUM if plan in ("pro", "max") else _FMT_FREE
-    return {**_BASE_YTDL_OPTS, "format": fmt}
+    opts = {**_BASE_YTDL_OPTS, "format": fmt}
+    if config.YT_COOKIES_FILE:
+        opts["cookiefile"] = config.YT_COOKIES_FILE
+    return opts
 
 
 # ─── FFmpeg base options ─────────────────────────────────────────────────────
-# -analyzeduration 0 removed: it causes EINVAL on streams that need format
-# detection time. Reconnect flags keep streams alive through brief drops.
-_FFMPEG_RECONNECT = (
-    "-reconnect 1 "
-    "-reconnect_streamed 1 "
-    "-reconnect_delay_max 5 "
-    "-loglevel warning"
-)
-
-
-def _build_ffmpeg_before(http_headers: Dict[str, str]) -> str:
-    """
-    Build the FFmpeg before_options string.
-    Injects the HTTP headers that yt-dlp used to fetch the stream URL so
-    FFmpeg can authenticate the same way — fixes 403/EINVAL on YouTube streams
-    that require a matching User-Agent or other request headers.
-    """
-    if not http_headers:
-        return _FFMPEG_RECONNECT
-    header_str = "".join(f"{k}: {v}\r\n" for k, v in http_headers.items())
-    return f'{_FFMPEG_RECONNECT} -headers "{header_str}"'
+# -reconnect_streamed removed: causes EINVAL with YouTube CDN chunked responses.
+# from_probe removed: probing opens the stream twice (EINVAL risk) and its
+# copy-mode path silently ignores the volume audio filter.
+_FFMPEG_RECONNECT = "-reconnect 1 -reconnect_delay_max 5"
 
 # ─── Per-guild state ──────────────────────────────────────────────────────────
 _current: Dict[int, Track] = {}
@@ -253,16 +241,20 @@ async def _play_track(
         else:
             ffmpeg_opts = "-vn"
 
-        # Pass yt-dlp's HTTP headers to FFmpeg so it can authenticate the
-        # same way — YouTube returns 403 if User-Agent / headers don't match.
-        http_headers = info.get("http_headers") or {}
-        ffmpeg_before = _build_ffmpeg_before(http_headers)
-
-        # from_probe auto-detects codec; uses copy for native Opus streams (zero re-encode)
-        audio_source = await discord.FFmpegOpusAudio.from_probe(
+        # Drop codec= so discord.py emits "-c:a libopus" (real transcode).
+        # Passing codec="libopus" or "opus" triggers "-c:a copy" which fails
+        # to remux WebM-framed Opus from YouTube into a raw Opus container
+        # (different packet framing → FFmpeg exits with EINVAL).
+        plan = db.get_guild_plan(str(guild_id))
+        bitrate = 192 if plan in ("pro", "max") else 128
+        # Capture FFmpeg stderr so we can log real errors instead of guessing.
+        stderr_file = tempfile.TemporaryFile(mode="w+b")
+        audio_source = discord.FFmpegOpusAudio(
             stream_url,
-            before_options=ffmpeg_before,
+            bitrate=bitrate,
+            before_options=_FFMPEG_RECONNECT,
             options=ffmpeg_opts,
+            stderr=stderr_file,
         )
 
         if voice_client.is_playing() or voice_client.is_paused():
@@ -276,8 +268,24 @@ async def _play_track(
         event_loop = asyncio.get_running_loop()
 
         def _after(err: Optional[Exception]) -> None:
-            if err:
-                logger.error("Playback error in guild %s: %s", guild_id, err)
+            # Drain FFmpeg stderr (captured to temp file) for diagnostics.
+            try:
+                stderr_file.seek(0)
+                stderr_text = stderr_file.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                stderr_text = ""
+            finally:
+                stderr_file.close()
+
+            rc = getattr(audio_source, "_process", None)
+            rc = rc.returncode if rc is not None else None
+
+            if err or (rc not in (0, None)):
+                logger.error(
+                    "Playback failed for '%s' (rc=%s): %s\nFFmpeg stderr: %s",
+                    track.display_title, rc, err, stderr_text or "<empty>",
+                )
+
             asyncio.run_coroutine_threadsafe(
                 _advance(voice_client, guild_id, text_channel),
                 event_loop,

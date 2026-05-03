@@ -344,6 +344,13 @@ Check that `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are set. The bot logs
 **Dashboard login doesn't redirect back**  
 The `OAUTH_REDIRECT_URI` in `.env` must exactly match one of the redirect URIs registered in your Discord application's OAuth2 settings.
 
+**"Sign in to confirm you're not a bot"**  
+YouTube increasingly challenges non-browser clients running on server IPs. The bot already tries alternative player clients (`tv_embedded`, `ios`) automatically. If the error persists:
+1. Export a `cookies.txt` (Netscape format) from a browser where you're logged into YouTube — e.g. with the [Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) Chrome extension.
+2. Place it in the project root (or any path the bot can read).
+3. Set `YT_COOKIES_FILE=cookies.txt` in `.env` (or the full path if it's elsewhere).
+4. In Docker, also mount the file: uncomment the `volumes` hint in `docker-compose.yml`.
+
 **"No results found"**  
 yt-dlp can occasionally be rate-limited by YouTube. Wait a moment and retry, or use a direct YouTube URL.
 

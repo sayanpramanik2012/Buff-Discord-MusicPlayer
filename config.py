@@ -17,6 +17,8 @@ DISCORD_CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
 OAUTH_REDIRECT_URI = os.getenv("OAUTH_REDIRECT_URI", "http://localhost:5000/auth/callback")
 
 # Comma-separated Discord user IDs that get admin on first login
+YT_COOKIES_FILE = os.getenv("YT_COOKIES_FILE", "")
+
 ADMIN_USER_IDS: set[str] = {
     uid.strip()
     for uid in os.getenv("ADMIN_USER_IDS", "").split(",")

@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional
 
 import yt_dlp
 
+import config
+
 logger = logging.getLogger(__name__)
 
 # ─── URL patterns ─────────────────────────────────────────────────────────────
@@ -21,6 +23,14 @@ _YT_PLAYLIST_RE = re.compile(
 )
 
 # ─── yt-dlp configs ───────────────────────────────────────────────────────────
+
+
+def _apply_cookies(opts: Dict[str, Any]) -> Dict[str, Any]:
+    """Inject cookiefile into opts when YT_COOKIES_FILE is configured."""
+    if config.YT_COOKIES_FILE:
+        return {**opts, "cookiefile": config.YT_COOKIES_FILE}
+    return opts
+
 
 # For text searches: flat extraction of 5 candidates (fast — no stream URL needed)
 _SEARCH_OPTS: Dict[str, Any] = {
@@ -113,7 +123,7 @@ async def search(query: str) -> Optional[Dict[str, Any]]:
     if is_youtube_url(query):
         # Direct URL — return full info (no filtering; user explicitly chose this)
         def _run_direct() -> Optional[Dict[str, Any]]:
-            with yt_dlp.YoutubeDL(_DIRECT_OPTS) as ydl:
+            with yt_dlp.YoutubeDL(_apply_cookies(_DIRECT_OPTS)) as ydl:
                 try:
                     return ydl.extract_info(query, download=False)
                 except Exception as exc:
@@ -124,7 +134,7 @@ async def search(query: str) -> Optional[Dict[str, Any]]:
 
     # Text search — fetch 5 candidates, skip Shorts, return first good result
     def _run_search() -> Optional[Dict[str, Any]]:
-        with yt_dlp.YoutubeDL(_SEARCH_OPTS) as ydl:
+        with yt_dlp.YoutubeDL(_apply_cookies(_SEARCH_OPTS)) as ydl:
             try:
                 info = ydl.extract_info(f"ytsearch5:{_music_query(query)}", download=False)
                 if not info or "entries" not in info:
@@ -157,7 +167,7 @@ async def get_playlist(playlist_url: str) -> List[Dict[str, Any]]:
     loop = asyncio.get_running_loop()
 
     def _run() -> List[Dict[str, Any]]:
-        with yt_dlp.YoutubeDL(_PLAYLIST_OPTS) as ydl:
+        with yt_dlp.YoutubeDL(_apply_cookies(_PLAYLIST_OPTS)) as ydl:
             try:
                 info = ydl.extract_info(playlist_url, download=False)
                 if not info or "entries" not in info:
