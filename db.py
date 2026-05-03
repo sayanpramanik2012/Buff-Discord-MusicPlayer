@@ -69,6 +69,16 @@ def init_db() -> None:
                 plan        TEXT NOT NULL,
                 assigned_at TEXT DEFAULT (datetime('now'))
             );
+
+            -- Remove duplicate active subscriptions (keep latest per user).
+            -- Safe to run on every startup; no-op when data is clean.
+            DELETE FROM subscriptions
+            WHERE status = 'active'
+              AND id NOT IN (
+                  SELECT MAX(id) FROM subscriptions
+                  WHERE status = 'active'
+                  GROUP BY user_id
+              );
         """)
 
 
@@ -95,10 +105,14 @@ def upsert_user(
             """,
             (user_id, username, discriminator, avatar, is_admin),
         )
-        # Ensure a subscription row exists
+        # Seed a free subscription only when the user has no active plan yet.
+        # INSERT OR IGNORE silently failed here: subscriptions has no UNIQUE
+        # constraint on user_id, so every login was inserting a new free row.
         conn.execute(
-            "INSERT OR IGNORE INTO subscriptions (user_id, plan, status) VALUES (?, 'free', 'active')",
-            (user_id,),
+            "INSERT INTO subscriptions (user_id, plan, status) "
+            "SELECT ?, 'free', 'active' WHERE NOT EXISTS "
+            "(SELECT 1 FROM subscriptions WHERE user_id = ? AND status = 'active')",
+            (user_id, user_id),
         )
 
 
@@ -242,9 +256,14 @@ def get_all_users(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
     with _conn() as conn:
         rows = conn.execute(
             """
-            SELECT u.*, COALESCE(s.plan, 'free') AS plan, COALESCE(s.status, 'active') AS sub_status
+            SELECT u.*,
+                COALESCE(
+                    (SELECT plan FROM subscriptions
+                     WHERE user_id = u.id AND status = 'active'
+                     ORDER BY started_at DESC LIMIT 1),
+                    'free'
+                ) AS plan
             FROM users u
-            LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
             ORDER BY u.created_at DESC
             LIMIT ? OFFSET ?
             """,
