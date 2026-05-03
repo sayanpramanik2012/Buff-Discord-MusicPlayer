@@ -92,7 +92,6 @@
                       <button type="submit" class="btn btn-primary btn-sm">Set</button>
                     </form>
                     <!-- Toggle admin -->
-                    {% if u.id != current_user.id %}
                     <form method="POST" action="/admin/toggle_admin">
                       <input type="hidden" name="user_id" value="{{ u.id }}">
                       <input type="hidden" name="is_admin" value="{{ '0' if u.is_admin else '1' }}">
@@ -100,7 +99,6 @@
                         {{ 'Revoke Admin' if u.is_admin else 'Make Admin' }}
                       </button>
                     </form>
-                    {% endif %}
                   </div>
                 </td>
               </tr>

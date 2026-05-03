@@ -91,7 +91,7 @@ def upsert_user(
                 username      = excluded.username,
                 discriminator = excluded.discriminator,
                 avatar        = excluded.avatar,
-                is_admin      = MAX(is_admin, excluded.is_admin)
+                is_admin      = excluded.is_admin
             """,
             (user_id, username, discriminator, avatar, is_admin),
         )

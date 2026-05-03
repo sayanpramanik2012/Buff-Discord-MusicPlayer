@@ -210,7 +210,7 @@ def admin_toggle_admin():
         abort(403)
     uid      = request.form.get("user_id", "").strip()
     is_admin = request.form.get("is_admin") == "1"
-    if uid and uid != current_user.id:   # can't demote yourself
+    if uid:
         db.set_admin(uid, is_admin)
         flash("Admin status updated.", "success")
     return redirect(url_for("main.admin"))
