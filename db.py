@@ -4,6 +4,7 @@ Used by both the Flask web app (web requests) and the Discord bot (async, via ex
 Each function opens its own connection so it's safe to call from any thread.
 """
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -70,6 +71,12 @@ def init_db() -> None:
                 assigned_at TEXT DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS user_guild_cache (
+                user_id     TEXT PRIMARY KEY REFERENCES users(id),
+                guilds_json TEXT NOT NULL DEFAULT '[]',
+                updated_at  TEXT DEFAULT (datetime('now'))
+            );
+
             -- Remove duplicate active subscriptions (keep latest per user).
             -- Safe to run on every startup; no-op when data is clean.
             DELETE FROM subscriptions
@@ -120,6 +127,28 @@ def get_user(user_id: str) -> Optional[Dict[str, Any]]:
     with _conn() as conn:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         return dict(row) if row else None
+
+
+def cache_user_guilds(user_id: str, guilds: List[Dict[str, Any]]) -> None:
+    with _conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_guild_cache (user_id, guilds_json)
+            VALUES (?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                guilds_json = excluded.guilds_json,
+                updated_at  = datetime('now')
+            """,
+            (user_id, json.dumps(guilds)),
+        )
+
+
+def get_cached_user_guilds(user_id: str) -> List[Dict[str, Any]]:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT guilds_json FROM user_guild_cache WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    return json.loads(row["guilds_json"]) if row else []
 
 
 # ── Subscription helpers ──────────────────────────────────────────────────────

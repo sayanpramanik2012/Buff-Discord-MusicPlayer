@@ -22,7 +22,7 @@ def inject_sidebar_data():
     """
     from flask_login import current_user as cu
     if cu.is_authenticated:
-        raw = session.get("guilds", [])
+        raw = _get_guilds()
         enriched = _enrich_guilds(raw)
         bot_guilds = [g for g in enriched if g.get("bot_present")][:8]
         return {"sidebar_guilds": bot_guilds}
@@ -30,6 +30,26 @@ def inject_sidebar_data():
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _get_guilds() -> list:
+    """Return manageable guilds from session, falling back to DB cache.
+
+    The guild list is stored in a signed session cookie (4KB browser limit).
+    If the cookie was silently dropped (too many guilds), we recover from the
+    DB cache written at login time and restore the session.
+    """
+    raw = session.get("guilds")
+    if not raw:
+        try:
+            from flask_login import current_user as cu
+            if cu.is_authenticated:
+                raw = db.get_cached_user_guilds(cu.id)
+                if raw:
+                    session["guilds"] = raw  # restore so next request is fast
+        except Exception:
+            pass
+    return raw or []
+
 
 def _bot_guild_ids():
     """Return a set of guild ID strings the bot is currently in."""
@@ -77,7 +97,7 @@ def landing():
 @main_bp.route("/dashboard")
 @login_required
 def dashboard():
-    raw_guilds = session.get("guilds", [])
+    raw_guilds = _get_guilds()
     guilds     = _enrich_guilds(raw_guilds)
     sub        = db.get_subscription(current_user.id)
     assigned   = db.get_user_assigned_guilds(current_user.id)
@@ -94,13 +114,14 @@ def dashboard():
 @login_required
 def server_settings(guild_id: str):
     # Verify user manages this guild
-    manageable_ids = {str(g["id"]) for g in session.get("guilds", [])}
+    user_guilds = _get_guilds()
+    manageable_ids = {str(g["id"]) for g in user_guilds}
     if guild_id not in manageable_ids and not current_user.is_admin:
         abort(403)
 
-    # Find guild metadata from session
+    # Find guild metadata
     guild_meta = next(
-        (g for g in session.get("guilds", []) if str(g["id"]) == guild_id),
+        (g for g in user_guilds if str(g["id"]) == guild_id),
         {"id": guild_id, "name": guild_id, "icon": None},
     )
 
@@ -142,7 +163,7 @@ def server_settings(guild_id: str):
 @login_required
 def plans():
     sub      = db.get_subscription(current_user.id)
-    guilds   = _enrich_guilds(session.get("guilds", []))
+    guilds   = _enrich_guilds(_get_guilds())
     assigned = db.get_user_assigned_guilds(current_user.id)
     assigned_map = {a["guild_id"]: a["plan"] for a in assigned}
     return render_template(
@@ -160,7 +181,7 @@ def assign_plan():
     guild_id = request.form.get("guild_id", "").strip()
     plan     = request.form.get("plan", "free").strip()
 
-    manageable_ids = {str(g["id"]) for g in session.get("guilds", [])}
+    manageable_ids = {str(g["id"]) for g in _get_guilds()}
     if guild_id not in manageable_ids and not current_user.is_admin:
         abort(403)
 
