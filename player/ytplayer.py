@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional
 import discord
 import yt_dlp
 
+import config
 import db
 from .queue_manager import Track, TrackSource, queue_manager
 
@@ -27,6 +28,7 @@ _BASE_YTDL_OPTS: Dict[str, Any] = {
     "no_warnings": True,
     "noplaylist": True,
     "source_address": "0.0.0.0",
+    "extractor_args": {"youtube": {"player_client": ["tv_embedded", "ios", "web"]}},
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -39,7 +41,10 @@ _BASE_YTDL_OPTS: Dict[str, Any] = {
 
 def _ytdl_opts_for_plan(plan: str) -> Dict[str, Any]:
     fmt = _FMT_PREMIUM if plan in ("pro", "max") else _FMT_FREE
-    return {**_BASE_YTDL_OPTS, "format": fmt}
+    opts = {**_BASE_YTDL_OPTS, "format": fmt}
+    if config.YT_COOKIES_FILE:
+        opts["cookiefile"] = config.YT_COOKIES_FILE
+    return opts
 
 
 # ─── FFmpeg base options ─────────────────────────────────────────────────────
