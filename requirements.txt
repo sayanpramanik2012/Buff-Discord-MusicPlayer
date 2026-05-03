@@ -1,20 +1,10 @@
-discord.py
-multidict
-pytube
-pytubefix
-youtube-search
-pynacl
-ffmpeg
-python-vlc
-spotipy
-Flask
-tenacity
-yt-dlp
-youtube_dl
-# os
-browser-cookie3
+discord.py>=2.5.0
+yt-dlp>=2024.4.1
+spotipy>=2.23.0
+Flask>=3.0.0
+Flask-Login>=0.6.3
+python-dotenv>=1.0.0
+davey>=0.1.5
+aiohttp>=3.9.0
+requests>=2.31.0
 watchdog
-google-api-python-client
-humanize
-
-# youtube_dl       pip install git+https://github.com/ytdl-org/youtube-dl.git@master#egg=youtube_dl

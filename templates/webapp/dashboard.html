@@ -1,0 +1,88 @@
+{% extends "webapp/base.html" %}
+{% block title %}Dashboard — Buff Music Bot{% endblock %}
+
+{% block body %}
+<div class="layout">
+  <!-- Sidebar -->
+  {% include "webapp/_sidebar.html" %}
+
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <button class="hamburger" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div>
+        <div class="topbar-title">Dashboard</div>
+        <div class="topbar-sub">Welcome back, {{ current_user.display_name }}!</div>
+      </div>
+      <span class="badge badge-{{ sub.plan }}">{{ sub.plan | capitalize }} Plan</span>
+    </div>
+
+    <div class="page-content">
+      <!-- Flash messages -->
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in msgs %}
+          <div class="alert alert-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <!-- Stats -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-value">{{ guilds | length }}</div>
+          <div class="stat-label">Your Servers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ guilds | selectattr('bot_present') | list | length }}</div>
+          <div class="stat-label">Bot Present</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ assigned_ids | length }}</div>
+          <div class="stat-label">Premium Servers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--plan-{{ sub.plan }})">
+            {{ sub.plan | capitalize }}
+          </div>
+          <div class="stat-label">Current Plan</div>
+        </div>
+      </div>
+
+      <!-- Server grid -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h2 style="font-size:15px;font-weight:700;">Your Servers</h2>
+        <a href="/plans" class="btn btn-ghost btn-sm">Manage Plans</a>
+      </div>
+
+      {% if guilds %}
+      <div class="server-grid">
+        {% for g in guilds %}
+        <div class="server-card {% if not g.bot_present %}no-bot{% endif %}">
+          <div class="server-icon">
+            {% if g.icon_url %}<img src="{{ g.icon_url }}" alt="{{ g.name }}">{% else %}{{ g.name[0] }}{% endif %}
+          </div>
+          <div class="server-name" title="{{ g.name }}">{{ g.name }}</div>
+          <span class="badge badge-{{ g.plan }}">{{ g.plan | capitalize }}</span>
+
+          <div class="server-card-actions">
+            {% if g.bot_present %}
+              <a href="/servers/{{ g.id }}" class="btn btn-primary btn-sm">Settings</a>
+            {% else %}
+              <a href="https://discord.com/api/oauth2/authorize?client_id={{ config.DISCORD_CLIENT_ID }}&permissions=3148800&scope=bot%20applications.commands&guild_id={{ g.id }}"
+                 target="_blank" class="btn btn-ghost btn-sm">Invite Bot</a>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+        <div class="card" style="text-align:center;padding:48px;">
+          <div style="font-size:36px;margin-bottom:12px;">🤔</div>
+          <p style="color:var(--text-muted);">No manageable servers found. Make sure you're an admin in at least one server.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

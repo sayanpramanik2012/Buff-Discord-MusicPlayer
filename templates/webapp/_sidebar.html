@@ -1,0 +1,53 @@
+<aside class="sidebar">
+  <a href="/" class="sidebar-logo">
+    <span style="font-size:28px;">🎵</span>
+    <span class="sidebar-logo-name"><span>Buff</span> Music</span>
+  </a>
+
+  <nav class="sidebar-nav">
+    <span class="nav-label">Navigation</span>
+
+    <a href="/dashboard" class="nav-link {% if request.path == '/dashboard' %}active{% endif %}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Dashboard
+    </a>
+
+    <a href="/plans" class="nav-link {% if request.path == '/plans' %}active{% endif %}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Plans &amp; Billing
+    </a>
+
+    <span class="nav-label" style="margin-top:8px;">Servers</span>
+
+    {% for g in sidebar_guilds %}
+      <a href="/servers/{{ g.id }}" class="nav-link {% if request.path == '/servers/' + g.id %}active{% endif %}"
+         style="padding-left:8px;">
+        {% if g.icon_url %}
+          <img src="{{ g.icon_url }}" style="width:20px;height:20px;border-radius:50%;flex-shrink:0;" alt="">
+        {% else %}
+          <span style="width:20px;height:20px;border-radius:50%;background:var(--bg-hover);display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">{{ g.name[0] }}</span>
+        {% endif %}
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ g.name }}</span>
+      </a>
+    {% endfor %}
+
+    {% if current_user.is_admin %}
+    <span class="nav-label" style="margin-top:8px;">Admin</span>
+    <a href="/admin" class="nav-link {% if request.path == '/admin' %}active{% endif %}" style="color:var(--warning);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Admin Panel
+    </a>
+    {% endif %}
+  </nav>
+
+  <div class="sidebar-user">
+    <img src="{{ current_user.avatar_url }}" alt="{{ current_user.display_name }}">
+    <div class="sidebar-user-info">
+      <div class="sidebar-user-name">{{ current_user.display_name }}</div>
+      <div class="sidebar-user-plan">{{ sub.plan | capitalize if sub else 'Free' }} Plan</div>
+    </div>
+    <a href="/auth/logout" class="sidebar-logout" title="Logout">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </a>
+  </div>
+</aside>

@@ -1,213 +1,313 @@
-# ytplayer.py
-from collections import deque
-import discord
-from pytubefix import YouTube
-import asyncio
-import yt_dlp as youtube_dl
-from random import shuffle
-import os
-from functools import lru_cache
-import logging
-from search.spotifyplaylist import playlist_tracks, process_next_track
-from commands import disconnect
+"""
+Core audio engine.
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+All audio is streamed directly via yt-dlp + FFmpeg — no local downloads.
+Supports ytsearch1:... queries (used for Spotify→YouTube lookup) as well as
+direct youtube.com/watch?v=... URLs.
+"""
+
+import asyncio
+import logging
+from typing import Any, Dict, Optional
+
+import discord
+import yt_dlp
+
+import db
+from .queue_manager import Track, TrackSource, queue_manager
+
 logger = logging.getLogger(__name__)
 
-# Constants
-AUDIO_SETTINGS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -ar 48000 -ac 2 -b:a 192k -af "bass=g=2,treble=g=2,volume=1"'
-}
+# ─── yt-dlp format strings per plan ──────────────────────────────────────────
+_FMT_PREMIUM = "bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best"
+_FMT_FREE    = "bestaudio[abr<=128]/bestaudio/best"
 
-YDL_OPTS = {
-    'format': 'bestaudio[asr=48000]/bestaudio/best',
-    'cookiefile': './cookies.txt',
-    'quiet': True,
-    'outtmpl': './downloads/%(id)s.%(ext)s',
-    'http_headers': {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
+_BASE_YTDL_OPTS: Dict[str, Any] = {
+    "quiet": True,
+    "no_warnings": True,
+    "noplaylist": True,
+    "source_address": "0.0.0.0",
+    "http_headers": {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
     },
-    'use_po_token': True,
 }
 
-# Global state
-song_queues = {}
 
-@lru_cache(maxsize=100)
-def get_video_info(video_id):
-    """Cache video information to avoid repeated API calls"""
-    with youtube_dl.YoutubeDL(YDL_OPTS) as ydl:
-        return ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+def _ytdl_opts_for_plan(plan: str) -> Dict[str, Any]:
+    fmt = _FMT_PREMIUM if plan in ("pro", "max") else _FMT_FREE
+    return {**_BASE_YTDL_OPTS, "format": fmt}
 
-async def download_audio(audio_url, video_id):
-    """Download audio file with error handling"""
-    audio_file = f'./downloads/{video_id}.webm'
-    
-    if os.path.exists(audio_file):
-        logger.info(f"Using cached audio file: {audio_file}")
-        return audio_file
 
-    try:
-        with youtube_dl.YoutubeDL(YDL_OPTS) as ydl:
-            info = ydl.extract_info(audio_url, download=True)
-            audio_file = f'./downloads/{info["id"]}.webm'
-            logger.info(f"Downloaded audio file: {audio_file}")
-            return audio_file
-    except Exception as e:
-        logger.error(f"yt-dlp download failed: {e}")
-        raise
+# ─── FFmpeg base options ─────────────────────────────────────────────────────
+# -analyzeduration 0 removed: it causes EINVAL on streams that need format
+# detection time. Reconnect flags keep streams alive through brief drops.
+_FFMPEG_RECONNECT = (
+    "-reconnect 1 "
+    "-reconnect_streamed 1 "
+    "-reconnect_delay_max 5 "
+    "-loglevel warning"
+)
 
-async def get_audio_stream(audio_url):
-    """Get audio stream URL using pytube as fallback"""
-    try:
-        yt = YouTube(audio_url)
-        audio_stream = yt.streams.filter(only_audio=True).first()
-        if not audio_stream:
-            raise Exception("No audio streams available.")
-        return audio_stream.url
-    except Exception as e:
-        logger.error(f"pytube fallback failed: {e}")
-        raise
 
-async def on_song_end(ctx):
-    """Handle song end with consistent queue management"""
-    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-    
-    if not voice_client or not voice_client.is_connected():
-        return
+def _build_ffmpeg_before(http_headers: Dict[str, str]) -> str:
+    """
+    Build the FFmpeg before_options string.
+    Injects the HTTP headers that yt-dlp used to fetch the stream URL so
+    FFmpeg can authenticate the same way — fixes 403/EINVAL on YouTube streams
+    that require a matching User-Agent or other request headers.
+    """
+    if not http_headers:
+        return _FFMPEG_RECONNECT
+    header_str = "".join(f"{k}: {v}\r\n" for k, v in http_headers.items())
+    return f'{_FFMPEG_RECONNECT} -headers "{header_str}"'
 
-    # Check regular queue first
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        next_song = song_queues[ctx.guild.id][0]
-        await play_audio(ctx, next_song)
-    else:
-        # Check Spotify playlist
-        try:
-            from search.spotifyplaylist import playlist_tracks as spotify_tracks
-            from search.spotifyplaylist import process_next_track as process_spotify_track
-            if ctx.guild.id in spotify_tracks and spotify_tracks[ctx.guild.id]:
-                await process_spotify_track(ctx)
-                return
-        except Exception as e:
-            logger.error(f"Error processing Spotify playlist: {e}")
+# ─── Per-guild state ──────────────────────────────────────────────────────────
+_current: Dict[int, Track] = {}
 
-        # Check YouTube playlist
-        try:
-            from search.youtubeplaylist import playlist_tracks as youtube_tracks
-            from search.youtubeplaylist import process_next_track as process_youtube_track
-            if ctx.guild.id in youtube_tracks and youtube_tracks[ctx.guild.id]:
-                await process_youtube_track(ctx)
-                return
-        except Exception as e:
-            logger.error(f"Error processing YouTube playlist: {e}")
 
-        # Final fallback if no tracks found
-        await ctx.send("Queue is empty. Disconnecting...")
-        await disconnect_and_clear_queue(ctx)
-        if voice_client.is_connected():
-            await voice_client.disconnect()
-            
-async def play_audio(ctx, audio_url):
-    """Play audio with improved error handling and resource management"""
-    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-    if not voice_client or not voice_client.is_connected():
-        logger.warning("Cannot play audio: Bot is not in voice channel")
-        return
+# ─── Public helpers ───────────────────────────────────────────────────────────
 
-    # Extract video ID and get info
-    try:
-        with youtube_dl.YoutubeDL({'quiet': True}) as ydl:
-            info = ydl.extract_info(audio_url, download=False)
-            video_id = info['id']
-            title = info.get('title', audio_url)
-    except Exception as e:
-        logger.error(f"Info extraction failed: {e}")
-        await ctx.send(f"Error retrieving video info: {e}")
-        return
+def get_current_track(guild_id: int) -> Optional[Track]:
+    return _current.get(guild_id)
 
-    # Ensure queue exists and pop current song
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        current_song = song_queues[ctx.guild.id].popleft()  # Actual pop happens here
-        await ctx.send(f"Now playing: **{title}**")
 
-    try:
-        # Try downloading with yt-dlp first
-        audio_file = await download_audio(audio_url, video_id)
-        audio_source = await discord.FFmpegOpusAudio.from_probe(audio_file)
-    except Exception as e:
-        logger.warning(f"yt-dlp failed, falling back to pytube: {e}")
-        try:
-            audio_stream_url = await get_audio_stream(audio_url)
-            audio_source = discord.FFmpegPCMAudio(audio_stream_url, **AUDIO_SETTINGS)
-        except Exception as fallback_error:
-            logger.error(f"All audio source methods failed: {fallback_error}")
-            await ctx.send("❌ All audio retrieval methods failed")
+async def enqueue_and_play(
+    voice_client: discord.VoiceClient,
+    guild_id: int,
+    track: Track,
+    text_channel: Optional[discord.abc.Messageable] = None,
+) -> None:
+    """Add *track* to the guild queue. If idle, start playback immediately."""
+    already_playing = voice_client.is_playing() or voice_client.is_paused()
+
+    if already_playing:
+        # Enforce queue length: lower of plan cap and server-configured limit.
+        plan           = db.get_guild_plan(str(guild_id))
+        plan_limit     = db.PLAN_QUEUE_LIMITS.get(plan, 50)
+        settings       = db.get_guild_settings(str(guild_id))
+        settings_limit = settings.get("max_queue_length", plan_limit)
+        effective_limit = min(plan_limit, settings_limit)
+
+        if queue_manager.size(guild_id) >= effective_limit:
+            if text_channel:
+                await text_channel.send(
+                    f"⚠️ The queue is full! The **{plan.capitalize()}** plan allows up to "
+                    f"**{effective_limit}** tracks in the queue. "
+                    "Skip or remove some songs to make room."
+                )
             return
 
-    try:
-        voice_client.play(
-            audio_source,
-            after=lambda e: asyncio.run_coroutine_threadsafe(
-                on_song_end(ctx), ctx.bot.loop
-            ) if not e else None
-        )
-    except Exception as play_error:
-        logger.error(f"Playback failed: {play_error}")
-        await ctx.send(f"❌ Playback error: {play_error}")
+    queue_manager.add(guild_id, track)
 
-async def enqueue_song(ctx, audio_url, from_playlist=False):
-    """Enqueue song with improved state management"""
-    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-    if not voice_client or not voice_client.is_connected():
-        logger.warning("Cannot enqueue song: Bot is not in voice channel")
-        return
-
-    if ctx.guild.id not in song_queues:
-        song_queues[ctx.guild.id] = deque()
-
-    song_queues[ctx.guild.id].append(audio_url)
-    
-    if not from_playlist:
-        if voice_client.is_playing() or voice_client.is_paused():
-            await ctx.send(f"Added to queue: {audio_url}")
-        if voice_client.is_paused():
-            await ctx.send("Currently paused. Use `resume` to continue.")
-
-    # Only start playing if nothing is playing
-    if not voice_client.is_playing() and not voice_client.is_paused():
-        await play_audio(ctx, audio_url)
-
-async def disconnect_and_clear_queue(ctx):
-    """Disconnect and clear queue with improved cleanup"""
-    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
-    if voice_client and voice_client.is_connected():
-        await voice_client.disconnect()
-    if ctx.guild.id in song_queues:
-        del song_queues[ctx.guild.id]
-    logger.info(f"Disconnected and cleared queue for Guild ID: {ctx.guild.id}")
-
-async def shuffle_queue(ctx):
-    """Shuffle queue with improved error handling"""
-    if ctx.guild.id in song_queues and song_queues[ctx.guild.id]:
-        queue = list(song_queues[ctx.guild.id])
-        shuffle(queue)
-        song_queues[ctx.guild.id] = deque(queue)
-        await ctx.send("Queue shuffled successfully!")
+    if already_playing:
+        pos = queue_manager.size(guild_id)
+        if text_channel:
+            await text_channel.send(
+                f"Added to the queue at position **#{pos}**: {track.display_title} 🎶"
+            )
     else:
-        await ctx.send("No songs in the queue to shuffle.")
+        await _advance(voice_client, guild_id, text_channel)
 
-async def skip_song(ctx):
-    """Skip the current song and play the next one in the queue"""
-    voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+
+async def skip_current(voice_client: discord.VoiceClient) -> bool:
+    """Stop the current track; the after-callback will advance the queue."""
+    if voice_client.is_playing() or voice_client.is_paused():
+        voice_client.stop()
+        return True
+    return False
+
+
+async def stop_all(voice_client: discord.VoiceClient, guild_id: int) -> None:
+    """Clear queue, stop playback, and disconnect."""
+    queue_manager.clear(guild_id)
+    _current.pop(guild_id, None)
+    if voice_client.is_playing() or voice_client.is_paused():
+        voice_client.stop()
+    if voice_client.is_connected():
+        await voice_client.disconnect()
+
+
+# ─── Internal ─────────────────────────────────────────────────────────────────
+
+async def _advance(
+    voice_client: discord.VoiceClient,
+    guild_id: int,
+    text_channel: Optional[discord.abc.Messageable],
+) -> None:
     if not voice_client or not voice_client.is_connected():
-        await ctx.send("I'm not playing anything right now.")
         return
 
-    # Stop current playback (triggers after callback)
-    if voice_client.is_playing():
-        voice_client.stop()
-    elif voice_client.is_paused():
-        voice_client.resume()
-        voice_client.stop()
+    track = queue_manager.pop(guild_id)
+    if track is None:
+        _current.pop(guild_id, None)
+        if text_channel:
+            await text_channel.send(
+                "That's all the songs in the queue! "
+                "It was fun playing for you — see you next time! 👋"
+            )
+        await voice_client.disconnect()
+        return
+
+    await _play_track(voice_client, guild_id, track, text_channel)
+
+
+async def _fetch_info(url: str, guild_id: int) -> Optional[Dict[str, Any]]:
+    """Run yt-dlp in a thread pool using the correct quality tier for this guild."""
+    loop = asyncio.get_running_loop()
+    plan = db.get_guild_plan(str(guild_id))
+    opts = _ytdl_opts_for_plan(plan)
+
+    def _run() -> Optional[Dict[str, Any]]:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            try:
+                info = ydl.extract_info(url, download=False)
+                if info and "entries" in info:
+                    entries = [e for e in info["entries"] if e]
+                    # Prefer non-Short, song-length results
+                    for entry in entries:
+                        entry_url = entry.get("url") or entry.get("webpage_url") or ""
+                        entry_dur = entry.get("duration") or 0
+                        if "/shorts/" in entry_url:
+                            continue
+                        if 0 < entry_dur < 60:
+                            continue
+                        info = entry
+                        break
+                    else:
+                        info = entries[0] if entries else None
+                return info
+            except yt_dlp.utils.DownloadError as exc:
+                logger.error("yt-dlp DownloadError for '%s': %s", url, exc)
+                return None
+            except Exception as exc:
+                logger.error("yt-dlp unexpected error for '%s': %s", url, exc)
+                return None
+
+    return await loop.run_in_executor(None, _run)
+
+
+async def _play_track(
+    voice_client: discord.VoiceClient,
+    guild_id: int,
+    track: Track,
+    text_channel: Optional[discord.abc.Messageable],
+) -> None:
+    try:
+        info = await _fetch_info(track.url, guild_id)
+
+        if not info:
+            logger.warning("No info returned for track: %s", track.display_title)
+            if text_channel:
+                await text_channel.send(
+                    f"Hmm, I couldn't get the stream for **{track.display_title}** — "
+                    "not sure what happened there. I'll skip it and move on! ⏭"
+                )
+            await _advance(voice_client, guild_id, text_channel)
+            return
+
+        stream_url = info.get("url")
+        if not stream_url:
+            formats = info.get("formats", [])
+            audio_formats = [
+                f for f in formats if f.get("acodec", "none") != "none" and f.get("url")
+            ]
+            if audio_formats:
+                audio_formats.sort(key=lambda f: f.get("abr") or 0, reverse=True)
+                stream_url = audio_formats[0]["url"]
+
+        if not stream_url:
+            logger.error("No stream URL in yt-dlp response for '%s'", track.display_title)
+            if text_channel:
+                await text_channel.send(
+                    f"Looks like **{track.display_title}** isn't playable right now — "
+                    "it might be age-restricted or unavailable in this region. "
+                    "I'll skip it and try the next one! ⏭"
+                )
+            await _advance(voice_client, guild_id, text_channel)
+            return
+
+        # Fill metadata gaps from yt-dlp response
+        if not track.title or track.title == "Unknown":
+            track.title = info.get("title", "Unknown")
+        if not track.artist:
+            track.artist = info.get("uploader") or info.get("channel") or ""
+        if not track.thumbnail:
+            track.thumbnail = info.get("thumbnail")
+        if not track.duration:
+            track.duration = info.get("duration")
+
+        _current[guild_id] = track
+
+        # Read guild settings once for volume and announce toggle
+        settings = db.get_guild_settings(str(guild_id))
+        volume   = settings.get("volume", 100)
+
+        # Apply volume via FFmpeg audio filter only when it differs from 100 %.
+        # Non-unity volume forces a decode→filter→re-encode pass (no Opus copy).
+        if volume != 100:
+            ffmpeg_opts = f"-vn -af volume={volume / 100:.3f}"
+        else:
+            ffmpeg_opts = "-vn"
+
+        # Pass yt-dlp's HTTP headers to FFmpeg so it can authenticate the
+        # same way — YouTube returns 403 if User-Agent / headers don't match.
+        http_headers = info.get("http_headers") or {}
+        ffmpeg_before = _build_ffmpeg_before(http_headers)
+
+        # from_probe auto-detects codec; uses copy for native Opus streams (zero re-encode)
+        audio_source = await discord.FFmpegOpusAudio.from_probe(
+            stream_url,
+            before_options=ffmpeg_before,
+            options=ffmpeg_opts,
+        )
+
+        if voice_client.is_playing() or voice_client.is_paused():
+            voice_client.stop()
+            await asyncio.sleep(0.15)
+
+        # Respect the announce_songs toggle from guild settings
+        if settings.get("announce_songs", 1) and text_channel:
+            await text_channel.send(_now_playing_msg(track, guild_id))
+
+        event_loop = asyncio.get_running_loop()
+
+        def _after(err: Optional[Exception]) -> None:
+            if err:
+                logger.error("Playback error in guild %s: %s", guild_id, err)
+            asyncio.run_coroutine_threadsafe(
+                _advance(voice_client, guild_id, text_channel),
+                event_loop,
+            )
+
+        voice_client.play(audio_source, after=_after)
+
+    except Exception as exc:
+        logger.error(
+            "Exception in _play_track for '%s': %s", track.display_title, exc, exc_info=True
+        )
+        if text_channel:
+            await text_channel.send(
+                f"Oops! Something went wrong while trying to play **{track.display_title}**. "
+                f"I'll skip it for now and keep going! (`{exc}`)"
+            )
+        await _advance(voice_client, guild_id, text_channel)
+
+
+def _now_playing_msg(track: Track, guild_id: int) -> str:
+    dur = _fmt_duration(track.duration)
+    q = queue_manager.size(guild_id)
+    q_info = f" · {q} more track{'s' if q != 1 else ''} in queue" if q else ""
+    icon = "🎧" if track.source == TrackSource.SPOTIFY else "▶️"
+    return f"{icon} Now playing: **{track.display_title}**{dur}{q_info}"
+
+
+def _fmt_duration(seconds: Optional[int]) -> str:
+    if not seconds:
+        return ""
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f" `[{h}:{m:02d}:{s:02d}]`" if h else f" `[{m}:{s:02d}]`"

@@ -9,3 +9,7 @@ cookies.txt
 player/cookies.txt
 config.py
 downloads
+.env
+data/buff.db
+data/buff.db-wal
+data/buff.db-shm

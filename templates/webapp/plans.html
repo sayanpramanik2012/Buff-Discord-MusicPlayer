@@ -1,0 +1,163 @@
+{% extends "webapp/base.html" %}
+{% block title %}Plans — Buff Music Bot{% endblock %}
+
+{% block body %}
+<div class="layout">
+  {% include "webapp/_sidebar.html" %}
+
+  <div class="main">
+    <div class="topbar">
+      <button class="hamburger" aria-label="Menu">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div>
+        <div class="topbar-title">Plans &amp; Billing</div>
+        <div class="topbar-sub">Manage your subscription and server assignments</div>
+      </div>
+      <span class="badge badge-{{ sub.plan }}">{{ sub.plan | capitalize }}</span>
+    </div>
+
+    <div class="page-content">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in msgs %}
+          <div class="alert alert-{{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endwith %}
+
+      <!-- Plan cards -->
+      <div class="plan-grid">
+        <!-- Free -->
+        <div class="plan-card {% if sub.plan == 'free' %}plan-active-card{% endif %}">
+          <div>
+            <div class="plan-name" style="color:var(--plan-free)">Free</div>
+            <div class="plan-price">
+              <span class="plan-price-amount">$0</span>
+              <span class="plan-price-period">/ forever</span>
+            </div>
+          </div>
+          <div class="plan-features">
+            <div class="plan-feature active-feature"><span class="check">✓</span> Standard audio</div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> 50-track queue</div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> YouTube &amp; Spotify</div>
+            <div class="plan-feature"><span class="cross">✗</span> No premium server slots</div>
+            <div class="plan-feature"><span class="cross">✗</span> Auto-disconnects when alone</div>
+          </div>
+          {% if sub.plan == 'free' %}
+            <div class="btn btn-ghost" style="width:100%;justify-content:center;cursor:default;opacity:.6;">Current Plan</div>
+          {% else %}
+            <form method="POST" action="/admin/set_plan" onsubmit="return confirm('Downgrade to Free?')">
+              <input type="hidden" name="user_id" value="{{ current_user.id }}">
+              <input type="hidden" name="plan" value="free">
+              <button type="submit" class="btn btn-ghost" style="width:100%;justify-content:center;">Downgrade</button>
+            </form>
+          {% endif %}
+        </div>
+
+        <!-- Pro -->
+        <div class="plan-card plan-pro-card {% if sub.plan == 'pro' %}plan-active-card{% endif %}" style="position:relative;">
+          <div class="plan-popular">Most Popular</div>
+          <div>
+            <div class="plan-name" style="color:var(--plan-pro)">Pro</div>
+            <div class="plan-price">
+              <span class="plan-price-amount">$1.99</span>
+              <span class="plan-price-period">/ month</span>
+            </div>
+          </div>
+          <div class="plan-features">
+            <div class="plan-feature active-feature"><span class="check">✓</span> High-quality Opus audio</div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> 200-track queue</div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> <strong>2 premium servers</strong></div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> No auto-disconnect</div>
+          </div>
+          {% if sub.plan == 'pro' %}
+            <div class="btn btn-primary" style="width:100%;justify-content:center;cursor:default;opacity:.7;">Current Plan</div>
+          {% elif current_user.is_admin %}
+            <form method="POST" action="/admin/set_plan">
+              <input type="hidden" name="user_id" value="{{ current_user.id }}">
+              <input type="hidden" name="plan" value="pro">
+              <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;">Activate Pro (Admin)</button>
+            </form>
+          {% else %}
+            <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="alert('Payment integration coming soon! Contact admin to upgrade.')">Upgrade to Pro — $1.99/mo</button>
+          {% endif %}
+        </div>
+
+        <!-- Max -->
+        <div class="plan-card plan-max-card {% if sub.plan == 'max' %}plan-active-card{% endif %}">
+          <div>
+            <div class="plan-name" style="color:var(--plan-max)">Max</div>
+            <div class="plan-price">
+              <span class="plan-price-amount">$3.99</span>
+              <span class="plan-price-period">/ month</span>
+            </div>
+          </div>
+          <div class="plan-features">
+            <div class="plan-feature active-feature"><span class="check">✓</span> High-quality Opus audio</div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> Unlimited queue</div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> <strong>10 premium servers</strong></div>
+            <div class="plan-feature active-feature"><span class="check">✓</span> Priority processing</div>
+          </div>
+          {% if sub.plan == 'max' %}
+            <div class="btn" style="width:100%;justify-content:center;cursor:default;opacity:.7;background:var(--plan-max);color:#fff;">Current Plan</div>
+          {% elif current_user.is_admin %}
+            <form method="POST" action="/admin/set_plan">
+              <input type="hidden" name="user_id" value="{{ current_user.id }}">
+              <input type="hidden" name="plan" value="max">
+              <button type="submit" class="btn" style="width:100%;justify-content:center;background:var(--plan-max);color:#fff;">Activate Max (Admin)</button>
+            </form>
+          {% else %}
+            <button class="btn" style="width:100%;justify-content:center;background:var(--plan-max);color:#fff;" onclick="alert('Payment integration coming soon! Contact admin to upgrade.')">Upgrade to Max — $3.99/mo</button>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Server assignment -->
+      {% if sub.plan in ('pro', 'max') or current_user.is_admin %}
+      <div class="card">
+        <div class="card-title">🖥️ Assign Premium to Servers
+          <span style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:8px;">
+            {{ assigned_map | length }} /
+            {% if current_user.is_admin %}∞{% else %}{{ limits[sub.plan] }}{% endif %}
+            slots used
+          </span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;">
+          {% for g in guilds if g.bot_present %}
+          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+              {% if g.icon_url %}
+                <img src="{{ g.icon_url }}" style="width:28px;height:28px;border-radius:50%;flex-shrink:0;" alt="">
+              {% else %}
+                <span style="width:28px;height:28px;border-radius:50%;background:var(--bg-hover);display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">{{ g.name[0] }}</span>
+              {% endif %}
+              <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ g.name }}</span>
+            </div>
+            <form method="POST" action="/plans/assign" class="assign-plan-form" data-guild-name="{{ g.name }}" style="display:flex;gap:6px;align-items:center;flex-shrink:0;">
+              <input type="hidden" name="guild_id" value="{{ g.id }}">
+              <select name="plan" class="form-control" style="width:auto;padding:4px 8px;font-size:12px;">
+                <option value="free"  {% if assigned_map.get(g.id) is none or assigned_map.get(g.id) == 'free'  %}selected{% endif %}>Free</option>
+                <option value="pro"   {% if assigned_map.get(g.id) == 'pro'   %}selected{% endif %}>Pro</option>
+                {% if sub.plan == 'max' or current_user.is_admin %}
+                <option value="max"   {% if assigned_map.get(g.id) == 'max'   %}selected{% endif %}>Max</option>
+                {% endif %}
+              </select>
+              <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+            </form>
+          </div>
+          {% else %}
+          <p style="color:var(--text-muted);">No servers with the bot present found.</p>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
+      <div class="card" style="text-align:center;padding:40px;">
+        <div style="font-size:32px;margin-bottom:12px;">⭐</div>
+        <p style="font-weight:700;margin-bottom:6px;">Upgrade to assign premium to your servers</p>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:20px;">Pro allows 2 premium servers · Max allows 10</p>
+        <a href="#" onclick="alert('Payment coming soon!')" class="btn btn-primary">Upgrade Now</a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
