@@ -19,6 +19,7 @@ def status():
 
 
 @api_bp.route("/guild/<guild_id>/plan")
+@login_required
 def guild_plan(guild_id: str):
     return jsonify({"guild_id": guild_id, "plan": db.get_guild_plan(guild_id)})
 

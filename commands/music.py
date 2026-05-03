@@ -43,16 +43,10 @@ from search.youtube import (
 
 logger = logging.getLogger(__name__)
 
-# Hard safety cap — even Max plan won't import more than this per playlist call
-_MAX_PLAYLIST = 200
-
-
 def _playlist_cap(guild_id: int) -> int:
     """Return max tracks to import from a playlist for this guild's plan."""
     plan = db.get_guild_plan(str(guild_id))
-    plan_limit = db.PLAN_QUEUE_LIMITS.get(plan, 50)
-    # plan_limit 0 = unlimited (Max) → use the hard safety cap
-    return plan_limit if plan_limit > 0 else _MAX_PLAYLIST
+    return db.PLAN_QUEUE_LIMITS.get(plan, 50)
 
 
 class Music(commands.Cog, name="Music"):

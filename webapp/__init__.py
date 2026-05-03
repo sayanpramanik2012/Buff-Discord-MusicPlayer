@@ -21,8 +21,6 @@ def create_app(bot=None) -> Flask:
     # Store bot reference so routes can query guild membership
     app.bot = bot
 
-    db.init_db()
-
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.login_message = ""  # suppress default flash

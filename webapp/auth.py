@@ -1,5 +1,7 @@
 """Discord OAuth2 login / logout."""
 
+import urllib.parse
+
 import requests
 from flask import Blueprint, redirect, request, session, url_for, current_app
 from flask_login import UserMixin, login_user, logout_user, login_required
@@ -49,7 +51,7 @@ def login():
         "response_type": "code",
         "scope":         "identify guilds",
     }
-    url = OAUTH_URL + "?" + "&".join(f"{k}={v}" for k, v in params.items())
+    url = OAUTH_URL + "?" + urllib.parse.urlencode(params)
     return redirect(url)
 
 
